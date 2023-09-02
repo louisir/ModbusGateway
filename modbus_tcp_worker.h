@@ -40,7 +40,7 @@ public:
     ~modbus_tcp_worker();
 
 signals:
-    void sig_rcv(const QString& client_id, const QByteArray& frame);
+    void sig_rcv(const QByteArray& frame);
     void sig_update_tcp_wdgt(const QString& client, const QString& dir, const QByteArray& frame);
     void sig_send(const QByteArray& frame);
 

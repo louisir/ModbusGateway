@@ -8,21 +8,25 @@ modbus_tcp_server::modbus_tcp_server(QObject* parent)
 
 modbus_tcp_server::~modbus_tcp_server()
 {
-    _client->close();
-    _client->deleteLater();
+    if(_client){
+        _client->disconnectFromHost();
+        _client->waitForDisconnected();
+        _client->close();
+        _client->deleteLater();
+    }
 }
 
 void modbus_tcp_server::incomingConnection(qintptr socketDescriptor)
 {
     if(!_client){
-    // 当有新的连接时，创建一个新的QTcpSocket来处理连接
-    _client = new QTcpSocket(this);
-    _client->setSocketDescriptor(socketDescriptor);
+        // 当有新的连接时，创建一个新的QTcpSocket来处理连接
+        _client = new QTcpSocket(this);
+        _client->setSocketDescriptor(socketDescriptor);
 
-    // 为新的客户端连接设置数据到达处理函数
-    connect(_client, &QTcpSocket::readyRead, this, &modbus_tcp_server::slot_read_ready);
-    // 关联客户端套接字的断开信号
-    connect(_client, &QTcpSocket::disconnected, this, &modbus_tcp_server::slot_client_disconnected);
+        // 为新的客户端连接设置数据到达处理函数
+        connect(_client, &QTcpSocket::readyRead, this, &modbus_tcp_server::slot_read_ready);
+        // 关联客户端套接字的断开信号
+        connect(_client, &QTcpSocket::disconnected, this, &modbus_tcp_server::slot_client_disconnected);
     }else{
         QTcpSocket socket;
         socket.setSocketDescriptor(socketDescriptor);
@@ -45,7 +49,10 @@ void modbus_tcp_server::slot_read_ready()
 void modbus_tcp_server::slot_client_disconnected()
 {
     QTcpSocket* client = qobject_cast<QTcpSocket*>(sender());
+    assert(_client == client);
     client->deleteLater();
+    _client = nullptr;
+
 }
 
 void modbus_tcp_server::slot_send(const QByteArray& frame)
@@ -91,7 +98,7 @@ void modbus_tcp_worker::slot_rtu_to_tcp(const QByteArray& frame)
 
 void modbus_tcp_worker::slot_rcv(const QString& client_ip, const QString& client_port, const QByteArray& frame)
 {
-    emit sig_rcv(QString("%1:%2").arg(client_ip, client_port), frame);
+    emit sig_rcv(frame);
     emit sig_update_tcp_wdgt(QString("%1:%2").arg(client_ip, client_port), "<-", frame);
 }
 

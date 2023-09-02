@@ -19,7 +19,7 @@ signals:
 
 public slots:
     void slot_quit_worker();
-    void slot_tcp_to_rtu(const QByteArray& frame);
+    void slot_tcp_to_rtu(const QByteArray& adu);
 
 private:
     enum thread_params_idx{
@@ -36,6 +36,10 @@ private slots:
 
 private:
     QSerialPort* _serial = nullptr;
+
+private:
+    bool check_crc(const QByteArray& rtu_frame);
+    quint16 calc_modbus_rtu_crc(const QByteArray &data);
 };
 
 #endif // MODBUS_RTU_WORKER_H

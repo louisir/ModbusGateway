@@ -12,6 +12,7 @@ modbus_rtu_worker::modbus_rtu_worker(const QStringList& thread_params, QObject *
     _serial->setStopBits((QSerialPort::StopBits)_thread_params[idx_stopbit].toUInt());
     _serial->setParity((QSerialPort::Parity)_thread_params[idx_parity].toUInt());
     _serial->setFlowControl((QSerialPort::FlowControl)_thread_params[idx_flowctrl].toUInt());
+    _serial->setReadBufferSize(1024);
     if(!_serial->open(QIODevice::ReadWrite)){
         qWarning() << QString("open serial failed: name = %1, BaudRate = %2, DataBits = %3, StopBits = %4, Parity = %5, FlowControl = %6")
                           .arg(
@@ -36,9 +37,15 @@ modbus_rtu_worker::~modbus_rtu_worker()
 
 void modbus_rtu_worker::slot_ready_read()
 {
-    QByteArray data;
-    while (_serial->waitForReadyRead(_wait_timeout)) {
-        data = _serial->readAll();
+//    QByteArray data;
+//    while (_serial->waitForReadyRead(_wait_timeout)) {
+//        data = _serial->readAll();
+//        emit sig_rcv(data);
+//        emit sig_update_rtu_wdgt("->", data);
+//    }
+
+    QByteArray data = _serial->readAll();
+    if(check_crc(data)){
         emit sig_rcv(data);
         emit sig_update_rtu_wdgt("->", data);
     }
@@ -53,9 +60,51 @@ void modbus_rtu_worker::slot_quit_worker()
     _serial->close();
 }
 
-void modbus_rtu_worker::slot_tcp_to_rtu(const QByteArray& frame)
+void modbus_rtu_worker::slot_tcp_to_rtu(const QByteArray& adu)
 {
-    qDebug() << QString("tcp to rtu: %1").arg(frame.toHex());
-    _serial->write(frame);
-    emit sig_update_rtu_wdgt("<-", frame);
+    qDebug() << QString("tcp to rtu: %1").arg(adu.toHex());
+    QByteArray modbus_rtu_frame = adu;
+    quint16 crc = calc_modbus_rtu_crc(adu);
+    modbus_rtu_frame.append(static_cast<quint8>(crc >> 8));
+    modbus_rtu_frame.append(static_cast<quint8>(crc & 0xFF));
+    _serial->write(modbus_rtu_frame);
+    emit sig_update_rtu_wdgt("<-", modbus_rtu_frame);
+}
+
+bool modbus_rtu_worker::check_crc(const QByteArray& rtu_frame)
+{
+    if (rtu_frame.length() < 8) {
+        qDebug() << "Invalid Modbus RTU frame length.";
+        return false;
+    }
+    qDebug() << rtu_frame.toHex();
+    QByteArray adu = rtu_frame.left(rtu_frame.length() - 2); // 去除CRC校验字段
+//    quint16 rcv_crc = (static_cast<quint16>(rtu_frame.at(rtu_frame.length() - 2)) << 8) | (rtu_frame.at(rtu_frame.length() - 1));
+    quint16 rcv_crc = (static_cast<quint16>((rtu_frame.at(rtu_frame.length() - 2) << 8) | rtu_frame.at(rtu_frame.length() - 1)));
+    quint16 calc_crc = calc_modbus_rtu_crc(adu);
+
+    if (rcv_crc != calc_crc) {
+        qDebug() << "CRC check failed. Discarding frame.";
+        return false;
+    }
+
+    return true;
+}
+
+quint16 modbus_rtu_worker::calc_modbus_rtu_crc(const QByteArray &data)
+{
+    quint16 crc = 0xFFFF;
+
+    for (int i = 0; i < data.size(); ++i) {
+        crc ^= static_cast<quint16>(data.at(i));
+        for (int j = 0; j < 8; ++j) {
+            if (crc & 0x0001) {
+                crc = (crc >> 1) ^ 0xA001;
+            } else {
+                crc = crc >> 1;
+            }
+        }
+    }
+
+    return ((crc & 0xFF) << 8) | ((crc >> 8) & 0xFF);
 }

@@ -24,8 +24,8 @@ public:
     }
 protected:
     QThread thread;
-    QStringList _thread_params;    
-    quint32 _wait_timeout = 100;
+    QStringList _thread_params;
+    quint32 _wait_timeout = 1;
     quint8 _failure_count = 0;
     const quint8 _max_failure = 3;
 };

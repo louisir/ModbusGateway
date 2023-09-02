@@ -11,14 +11,11 @@ public:
 
 signals:
     void sig_rtu_to_tcp(const QByteArray& frame);
-    void sig_tcp_to_rtu(const QByteArray& frame);
+    void sig_tcp_to_rtu(const QByteArray& adu);
 
 public slots:
     void slot_rcv_from_rtu(const QByteArray& frame);
-    void slot_rcv_from_tcp(const QString& client_id, const QByteArray& frame);
-
-private:
-    quint16 calc_modbus_rtu_crc(const QByteArray &data);
+    void slot_rcv_from_tcp(const QByteArray& frame);
 };
 
 #endif // TRANSFER_H
