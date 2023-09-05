@@ -5,14 +5,14 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
-    ui->setupUi(this);    
-    ui->verticalLayout->insertWidget(0, &this->mbrtu_wdgt);
-    ui->verticalLayout->setStretch(0, 1);
-    ui->verticalLayout->setStretch(1, 19);
-    ui->verticalLayout_2->insertWidget(0, &this->mbtcp_wdgt);
-    ui->verticalLayout_2->setStretch(0, 1);
-    ui->verticalLayout_2->setStretch(1, 19);
-    ui->centralwidget->setLayout(ui->verticalLayout_3);
+    ui->setupUi(this);
+    ui->horizontalLayout->insertWidget(0, &this->mbrtu_wdgt);
+    ui->horizontalLayout->setStretch(0, 3);
+    ui->horizontalLayout->setStretch(1, 17);
+    ui->horizontalLayout_2->insertWidget(0, &this->mbtcp_wdgt);
+    ui->horizontalLayout_2->setStretch(0, 3);
+    ui->horizontalLayout_2->setStretch(1, 17);
+    ui->centralwidget->setLayout(ui->verticalLayout);
 
     this->setWindowTitle(QString("ModbusRTU to ModbusTCP 软网关 by louis / louis.androidor@gmail.com"));
 }
@@ -67,6 +67,10 @@ void MainWindow::on_btn_run_clicked()
 
 void MainWindow::slot_update_rtu_wdgt(const QString& dir, const QByteArray& frame)
 {
+    if(ui->lst_wdgt_rtu->count() >= max_item_count){
+        ui->lst_wdgt_rtu->clear();
+        ui->lst_wdgt_tcp->clear();
+    }
     QString current_date_time = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz");
     QListWidgetItem *item = new QListWidgetItem(QString("%1 %2 %3").arg(current_date_time, dir, frame.toHex()));
     ui->lst_wdgt_rtu->insertItem(0, item);
@@ -74,6 +78,10 @@ void MainWindow::slot_update_rtu_wdgt(const QString& dir, const QByteArray& fram
 
 void MainWindow::slot_update_tcp_wdgt(const QString& client_id, const QString& dir, const QByteArray& frame)
 {
+    if(ui->lst_wdgt_tcp->count() >= max_item_count){
+        ui->lst_wdgt_rtu->clear();
+        ui->lst_wdgt_tcp->clear();
+    }
     QString current_date_time = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz");
     QListWidgetItem *item = new QListWidgetItem(QString("%1 @ %2 %3 %4").arg(current_date_time, client_id, dir, frame.toHex()));
     ui->lst_wdgt_tcp->insertItem(0, item);

@@ -33,6 +33,8 @@ private slots:
 private:
     Ui::MainWindow *ui;
 
+    const quint32 max_item_count = 50;
+
     ModbusRtuWidget mbrtu_wdgt;
     ModbusTcpWidget mbtcp_wdgt;
 

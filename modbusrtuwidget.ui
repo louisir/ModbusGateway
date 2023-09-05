@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>551</width>
-    <height>86</height>
+    <height>288</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -22,28 +22,64 @@
   <widget class="QWidget" name="gridLayoutWidget">
    <property name="geometry">
     <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>551</width>
-     <height>81</height>
+     <x>30</x>
+     <y>10</y>
+     <width>261</width>
+     <height>179</height>
     </rect>
    </property>
-   <layout class="QGridLayout" name="gridLayout_3" columnstretch="1,2,1,2,1,2,7" columnminimumwidth="1,2,1,2,1,2,7">
-    <item row="1" column="2">
+   <layout class="QGridLayout" name="gridLayout_3" rowstretch="0,0,0,0,0,0,7" columnstretch="1,2">
+    <item row="4" column="0">
      <widget class="QLabel" name="label_5">
       <property name="text">
        <string>校验位：</string>
       </property>
      </widget>
     </item>
-    <item row="0" column="2">
+    <item row="1" column="1">
+     <widget class="QComboBox" name="comboBox_BaudRate"/>
+    </item>
+    <item row="0" column="1">
+     <widget class="QComboBox" name="comboBox_SerialName"/>
+    </item>
+    <item row="3" column="0">
+     <widget class="QLabel" name="label_4">
+      <property name="text">
+       <string>停止位：</string>
+      </property>
+     </widget>
+    </item>
+    <item row="1" column="0">
      <widget class="QLabel" name="label_2">
       <property name="text">
        <string>波特率：</string>
       </property>
      </widget>
     </item>
-    <item row="0" column="5">
+    <item row="2" column="0">
+     <widget class="QLabel" name="label_3">
+      <property name="text">
+       <string>数据位：</string>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="1">
+     <widget class="QComboBox" name="comboBox_Parity"/>
+    </item>
+    <item row="5" column="1">
+     <widget class="QComboBox" name="comboBox_FlowCtrl"/>
+    </item>
+    <item row="5" column="0">
+     <widget class="QLabel" name="label_6">
+      <property name="text">
+       <string>流控制：</string>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="1">
+     <widget class="QComboBox" name="comboBox_StopBits"/>
+    </item>
+    <item row="2" column="1">
      <widget class="QComboBox" name="comboBox_DataBits"/>
     </item>
     <item row="0" column="0">
@@ -53,51 +89,15 @@
       </property>
      </widget>
     </item>
-    <item row="0" column="4">
-     <widget class="QLabel" name="label_3">
-      <property name="text">
-       <string>数据位：</string>
-      </property>
-     </widget>
-    </item>
-    <item row="0" column="1">
-     <widget class="QComboBox" name="comboBox_SerialName"/>
-    </item>
-    <item row="0" column="3">
-     <widget class="QComboBox" name="comboBox_BaudRate"/>
-    </item>
-    <item row="1" column="1">
-     <widget class="QComboBox" name="comboBox_StopBits"/>
-    </item>
-    <item row="1" column="3">
-     <widget class="QComboBox" name="comboBox_Parity"/>
-    </item>
-    <item row="1" column="0">
-     <widget class="QLabel" name="label_4">
-      <property name="text">
-       <string>停止位：</string>
-      </property>
-     </widget>
-    </item>
-    <item row="1" column="5">
-     <widget class="QComboBox" name="comboBox_FlowCtrl"/>
-    </item>
-    <item row="1" column="4">
-     <widget class="QLabel" name="label_6">
-      <property name="text">
-       <string>流控制：</string>
-      </property>
-     </widget>
-    </item>
-    <item row="0" column="6" rowspan="2">
-     <spacer name="horizontalSpacer">
+    <item row="6" column="0" colspan="2">
+     <spacer name="verticalSpacer">
       <property name="orientation">
-       <enum>Qt::Horizontal</enum>
+       <enum>Qt::Vertical</enum>
       </property>
       <property name="sizeHint" stdset="0">
        <size>
-        <width>40</width>
-        <height>20</height>
+        <width>20</width>
+        <height>40</height>
        </size>
       </property>
      </spacer>

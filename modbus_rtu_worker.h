@@ -40,6 +40,7 @@ private:
 private:
     bool check_crc(const QByteArray& rtu_frame);
     quint16 calc_modbus_rtu_crc(const QByteArray &data);
+    QByteArray _cache;
 };
 
 #endif // MODBUS_RTU_WORKER_H

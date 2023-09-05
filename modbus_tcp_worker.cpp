@@ -21,6 +21,7 @@ void modbus_tcp_server::incomingConnection(qintptr socketDescriptor)
     if(!_client){
         // 当有新的连接时，创建一个新的QTcpSocket来处理连接
         _client = new QTcpSocket(this);
+        _client->setReadBufferSize(2048);
         _client->setSocketDescriptor(socketDescriptor);
 
         // 为新的客户端连接设置数据到达处理函数
@@ -57,6 +58,9 @@ void modbus_tcp_server::slot_client_disconnected()
 
 void modbus_tcp_server::slot_send(const QByteArray& frame)
 {
+    if(!_client){
+        return;
+    }
     _client->write(frame);
     emit sig_update_tcp_wdgt(QString("%1:%2").arg(_client->peerAddress().toString(), QString::number(_client->peerPort())), "->", frame);
 }

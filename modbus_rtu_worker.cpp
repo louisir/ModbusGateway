@@ -12,7 +12,7 @@ modbus_rtu_worker::modbus_rtu_worker(const QStringList& thread_params, QObject *
     _serial->setStopBits((QSerialPort::StopBits)_thread_params[idx_stopbit].toUInt());
     _serial->setParity((QSerialPort::Parity)_thread_params[idx_parity].toUInt());
     _serial->setFlowControl((QSerialPort::FlowControl)_thread_params[idx_flowctrl].toUInt());
-    _serial->setReadBufferSize(1024);
+    _serial->setReadBufferSize(2048);
     if(!_serial->open(QIODevice::ReadWrite)){
         qWarning() << QString("open serial failed: name = %1, BaudRate = %2, DataBits = %3, StopBits = %4, Parity = %5, FlowControl = %6")
                           .arg(
@@ -37,22 +37,13 @@ modbus_rtu_worker::~modbus_rtu_worker()
 
 void modbus_rtu_worker::slot_ready_read()
 {
-//    QByteArray data;
-//    while (_serial->waitForReadyRead(_wait_timeout)) {
-//        data = _serial->readAll();
-//        emit sig_rcv(data);
-//        emit sig_update_rtu_wdgt("->", data);
-//    }
-
-    QByteArray data = _serial->readAll();
-    if(check_crc(data)){
-        emit sig_rcv(data);
-        emit sig_update_rtu_wdgt("->", data);
+    QByteArray rtu_frame;
+    rtu_frame.append(_serial->readAll());
+    while (_serial->waitForReadyRead(_wait_timeout)) {
+        rtu_frame.append(_serial->readAll());
     }
-
-    if (_serial->error() == QSerialPort::TimeoutError && data.isEmpty()) {
-        qDebug() << "Read timeout occurred.";
-    }
+    emit sig_rcv(rtu_frame);
+    emit sig_update_rtu_wdgt("->", rtu_frame);
 }
 
 void modbus_rtu_worker::slot_quit_worker()
@@ -79,7 +70,6 @@ bool modbus_rtu_worker::check_crc(const QByteArray& rtu_frame)
     }
     qDebug() << rtu_frame.toHex();
     QByteArray adu = rtu_frame.left(rtu_frame.length() - 2); // 去除CRC校验字段
-//    quint16 rcv_crc = (static_cast<quint16>(rtu_frame.at(rtu_frame.length() - 2)) << 8) | (rtu_frame.at(rtu_frame.length() - 1));
     quint16 rcv_crc = (static_cast<quint16>((rtu_frame.at(rtu_frame.length() - 2) << 8) | rtu_frame.at(rtu_frame.length() - 1)));
     quint16 calc_crc = calc_modbus_rtu_crc(adu);
 
