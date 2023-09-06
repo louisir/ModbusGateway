@@ -127,10 +127,8 @@ quint16 modbus_rtu_worker::get_crc(const QByteArray& rtu_frame)
 
 bool modbus_rtu_worker::is_complete_rtu_frame(const QByteArray& rtu_frame)
 {
-    QByteArray t = rtu_frame;
     if(get_addr(rtu_frame) != 0 && get_func_code(rtu_frame) != 0){
-        QByteArray td = t.left(t.length() - 2);
-        quint16 crc_calc_value = calc_modbus_rtu_crc(td);
+        quint16 crc_calc_value = calc_modbus_rtu_crc(rtu_frame.left(rtu_frame.length() - 2));
         quint16 crc_rcv_value = get_crc(rtu_frame);
         if(crc_calc_value == crc_rcv_value){
             return true;

@@ -3,7 +3,7 @@
 #include <QDebug>
 #include <QIODevice>
 
-transfer::transfer(QObject *parent)
+transfer::transfer(QObject */*parent*/)
 {
 
 }

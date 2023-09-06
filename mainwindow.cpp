@@ -67,7 +67,7 @@ void MainWindow::on_btn_run_clicked()
 
 void MainWindow::slot_update_rtu_wdgt(const QString& dir, const QByteArray& frame)
 {
-    if(ui->lst_wdgt_rtu->count() >= max_item_count){
+    if(ui->lst_wdgt_rtu->count() >= (int)max_item_count){
         ui->lst_wdgt_rtu->clear();
         ui->lst_wdgt_tcp->clear();
     }
@@ -78,7 +78,7 @@ void MainWindow::slot_update_rtu_wdgt(const QString& dir, const QByteArray& fram
 
 void MainWindow::slot_update_tcp_wdgt(const QString& client_id, const QString& dir, const QByteArray& frame)
 {
-    if(ui->lst_wdgt_tcp->count() >= max_item_count){
+    if(ui->lst_wdgt_tcp->count() >= (int)max_item_count){
         ui->lst_wdgt_rtu->clear();
         ui->lst_wdgt_tcp->clear();
     }
