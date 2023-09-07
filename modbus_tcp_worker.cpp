@@ -44,7 +44,10 @@ void modbus_tcp_server::slot_read_ready()
         return;
 
     QByteArray data = client->readAll();
-    emit sig_rcv(client->peerAddress().toString(), QString::number(client->peerPort()), data);
+    if(!data.isEmpty() && data.length() >= _min_tcp_frame_length){
+        _trans_id_queue.enqueue(data.left(2));
+        emit sig_rcv(client->peerAddress().toString(), QString::number(client->peerPort()), data);
+    }
 }
 
 void modbus_tcp_server::slot_client_disconnected()
@@ -53,16 +56,20 @@ void modbus_tcp_server::slot_client_disconnected()
     assert(_client == client);
     client->deleteLater();
     _client = nullptr;
-
 }
 
-void modbus_tcp_server::slot_send(const QByteArray& frame)
+void modbus_tcp_server::slot_send(QByteArray& frame)
 {
     if(!_client){
         return;
+    }    
+    // 检查 originalData 至少有两个字节
+    if (frame.size() >= 2) {
+        frame.replace(0, 2, _trans_id_queue.dequeue());
+        _client->write(frame);
+        emit sig_update_tcp_wdgt(QString("%1:%2").arg(_client->peerAddress().toString(), QString::number(_client->peerPort())), "->", frame);
     }
-    _client->write(frame);
-    emit sig_update_tcp_wdgt(QString("%1:%2").arg(_client->peerAddress().toString(), QString::number(_client->peerPort())), "->", frame);
+    return;
 }
 
 modbus_tcp_worker::modbus_tcp_worker(const QStringList& thread_params, QObject *parent)
@@ -97,7 +104,8 @@ void modbus_tcp_worker::slot_quit_worker()
 
 void modbus_tcp_worker::slot_rtu_to_tcp(const QByteArray& frame)
 {
-    emit sig_send(frame);
+    QByteArray replicated_frame = QByteArray::fromRawData(frame.constData(), frame.size());
+    emit sig_send(replicated_frame);
 }
 
 void modbus_tcp_worker::slot_rcv(const QString& client_ip, const QString& client_port, const QByteArray& frame)

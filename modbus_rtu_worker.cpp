@@ -122,7 +122,9 @@ quint8 modbus_rtu_worker::get_func_code(const QByteArray& rtu_frame)
 
 quint16 modbus_rtu_worker::get_crc(const QByteArray& rtu_frame)
 {
-    return static_cast<quint16>(rtu_frame.at(rtu_frame.length() - 2)) << 8 | rtu_frame.at(rtu_frame.length() - 1);
+    quint8 crc_h = rtu_frame.at(rtu_frame.length() - 2);
+    quint8 crc_l = rtu_frame.at(rtu_frame.length() - 1);
+    return (quint16(crc_h) << 8) | quint16(crc_l);
 }
 
 bool modbus_rtu_worker::is_complete_rtu_frame(const QByteArray& rtu_frame)

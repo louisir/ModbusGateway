@@ -22,14 +22,16 @@ signals:
     void sig_update_tcp_wdgt(const QString& client, const QString& dir, const QByteArray& frame);
 
 public slots:
-    void slot_send(const QByteArray& frame);
+    void slot_send(QByteArray& frame);
 
 private slots:
     void slot_read_ready();
     void slot_client_disconnected();
 
 private:
+    const quint8 _min_tcp_frame_length = 12;
     QTcpSocket* _client = nullptr;
+    QQueue<QByteArray> _trans_id_queue;
 };
 
 class modbus_tcp_worker : public worker
@@ -42,7 +44,7 @@ public:
 signals:
     void sig_rcv(const QByteArray& frame);
     void sig_update_tcp_wdgt(const QString& client, const QString& dir, const QByteArray& frame);
-    void sig_send(const QByteArray& frame);
+    void sig_send(QByteArray& frame);
 
 public slots:
     void slot_quit_worker();
@@ -55,9 +57,8 @@ private:
         idx_ip,
         idx_port,        
     };
-
-private:
-    modbus_tcp_server* _modbus_tcp_server = nullptr;
+private:    
+    modbus_tcp_server* _modbus_tcp_server = nullptr;    
 };
 
 #endif // MODBUS_TCP_WORKER_H
