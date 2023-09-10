@@ -21,13 +21,15 @@ void modbus_tcp_server::incomingConnection(qintptr socketDescriptor)
     if(!_client){
         // 当有新的连接时，创建一个新的QTcpSocket来处理连接
         _client = new QTcpSocket(this);
-        _client->setReadBufferSize(2048);
+        _client->setReadBufferSize(_max_buff_size);
         _client->setSocketDescriptor(socketDescriptor);
 
         // 为新的客户端连接设置数据到达处理函数
         connect(_client, &QTcpSocket::readyRead, this, &modbus_tcp_server::slot_read_ready);
-        // 关联客户端套接字的断开信号
+        // 客户端断开
         connect(_client, &QTcpSocket::disconnected, this, &modbus_tcp_server::slot_client_disconnected);
+
+        emit sig_client_connected_notify(_client->peerAddress().toString(), QString::number(_client->peerPort()));
     }else{
         QTcpSocket socket;
         socket.setSocketDescriptor(socketDescriptor);
@@ -56,6 +58,7 @@ void modbus_tcp_server::slot_client_disconnected()
     assert(_client == client);
     client->deleteLater();
     _client = nullptr;
+    emit sig_client_disconnected_notify(client->peerAddress().toString(), QString::number(client->peerPort()));
 }
 
 void modbus_tcp_server::slot_send(QByteArray& frame)
@@ -79,6 +82,8 @@ modbus_tcp_worker::modbus_tcp_worker(const QStringList& thread_params, QObject *
     _modbus_tcp_server = new modbus_tcp_server(this);
     connect(_modbus_tcp_server, &modbus_tcp_server::sig_rcv, this, &modbus_tcp_worker::slot_rcv, Qt::DirectConnection);
     connect(_modbus_tcp_server, &modbus_tcp_server::sig_update_tcp_wdgt, this, &modbus_tcp_worker::slot_update_tcp_wdgt, Qt::DirectConnection);
+    connect(_modbus_tcp_server, &modbus_tcp_server::sig_client_connected_notify, this, &modbus_tcp_worker::slot_client_connected_notify, Qt::DirectConnection);
+    connect(_modbus_tcp_server, &modbus_tcp_server::sig_client_disconnected_notify, this, &modbus_tcp_worker::slot_client_disconnected_notify, Qt::DirectConnection);
     connect(this, &modbus_tcp_worker::sig_send, _modbus_tcp_server, &modbus_tcp_server::slot_send, Qt::DirectConnection);
     QHostAddress ip(_thread_params[idx_ip]);
     quint16 port = _thread_params[idx_port].toUShort();
@@ -117,4 +122,14 @@ void modbus_tcp_worker::slot_rcv(const QString& client_ip, const QString& client
 void modbus_tcp_worker::slot_update_tcp_wdgt(const QString& client, const QString& dir, const QByteArray& frame)
 {
     emit sig_update_tcp_wdgt(client, dir, frame);
+}
+
+void modbus_tcp_worker::slot_client_connected_notify(const QString& ip, const QString& port)
+{
+    emit sig_update_client_status(QString("%1:%2 connected").arg(ip, port));
+}
+
+void modbus_tcp_worker::slot_client_disconnected_notify(const QString& ip, const QString& port)
+{
+    emit sig_update_client_status(QString("%1:%2 disconnected").arg(ip, port));
 }

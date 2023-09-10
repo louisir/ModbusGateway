@@ -25,7 +25,11 @@ modbus_rtu_worker::modbus_rtu_worker(const QStringList& thread_params, QObject *
                               );
         return;
     }
-    connect(_serial, &QSerialPort::readyRead, this, &modbus_rtu_worker::slot_ready_read);
+    qDebug() << QString("main thread: 0x%1, id: %2(0x%3)").arg(
+        QString::number((quint64)QThread::currentThread(), 16),
+        QString::number((quint64)QThread::currentThreadId()),
+        QString::number((quint64)QThread::currentThreadId(), 16));
+    connect(_serial, &QSerialPort::readyRead, this, &modbus_rtu_worker::slot_ready_read, Qt::DirectConnection);
     this->moveToThread(&thread);
     thread.start();
 }
@@ -37,6 +41,10 @@ modbus_rtu_worker::~modbus_rtu_worker()
 
 void modbus_rtu_worker::slot_ready_read()
 {
+    qDebug() << QString("rtu thread: 0x%1, id: %2(0x%3)").arg(
+        QString::number((quint64)QThread::currentThread(), 16),
+        QString::number((quint64)QThread::currentThreadId()),
+        QString::number((quint64)QThread::currentThreadId(), 16));
     qDebug() << QString("current cache size = %1").arg(_cache.length());
     if(_cache.length() > _max_cache_size){
         _cache.clear();
@@ -45,17 +53,19 @@ void modbus_rtu_worker::slot_ready_read()
     rtu_frame.append(_serial->readAll());
     while (_serial->waitForReadyRead(_wait_timeout)) {
         rtu_frame.append(_serial->readAll());
-    }
+    }    
     if(rtu_frame.isEmpty()){
         qWarning() << QString("serial recv empty data. serial port name = %1").arg(_thread_params[idx_name]);
         return;
     }else{
+        qDebug() << QString("rtu frame = %1").arg(rtu_frame.toHex());
         if(rtu_frame.length() >= _min_rtu_frame_length){
             if(is_complete_rtu_frame(rtu_frame)){
                 emit sig_rcv(rtu_frame);
                 emit sig_update_rtu_wdgt("->", rtu_frame);
             }else{
                 _cache.append(rtu_frame);
+                qDebug() << QString("cache data = %1").arg(_cache.toHex());
                 rtu_frame.clear();
                 if(get_complete_rtu_frame(rtu_frame)){
                     emit sig_rcv(rtu_frame);

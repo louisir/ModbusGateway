@@ -14,6 +14,9 @@ MainWindow::MainWindow(QWidget *parent)
     ui->horizontalLayout_2->setStretch(1, 17);
     ui->centralwidget->setLayout(ui->verticalLayout);
 
+    label_status = new QLabel("Modbus-RTU to Modbus-TCP Ready!", this);
+    ui->statusbar->addWidget(label_status);
+
     this->setWindowTitle(QString("ModbusRTU to ModbusTCP 软网关 by louis / louis.androidor@gmail.com"));
 }
 
@@ -52,6 +55,7 @@ void MainWindow::on_btn_run_clicked()
         connect(this, &MainWindow::sig_quit_worker, tcp_worker, &modbus_tcp_worker::slot_quit_worker, Qt::QueuedConnection);
         connect(tcp_worker, &modbus_tcp_worker::sig_rcv, &_transfer, &transfer::slot_rcv_from_tcp, Qt::QueuedConnection);
         connect(tcp_worker, &modbus_tcp_worker::sig_update_tcp_wdgt, this, &MainWindow::slot_update_tcp_wdgt, Qt::QueuedConnection);
+        connect(tcp_worker, &modbus_tcp_worker::sig_update_client_status, this, &MainWindow::slot_update_client_status, Qt::QueuedConnection);
         connect(&_transfer, &transfer::sig_rtu_to_tcp, tcp_worker, &modbus_tcp_worker::slot_rtu_to_tcp, Qt::QueuedConnection);
     }else{
         if(!rtu_worker || !tcp_worker){
@@ -85,4 +89,9 @@ void MainWindow::slot_update_tcp_wdgt(const QString& client_id, const QString& d
     QString current_date_time = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz");
     QListWidgetItem *item = new QListWidgetItem(QString("%1 @ %2 %3 %4").arg(current_date_time, client_id, dir, frame.toHex()));
     ui->lst_wdgt_tcp->insertItem(0, item);
+}
+
+void MainWindow::slot_update_client_status(const QString& notify)
+{
+    label_status->setText(notify);
 }

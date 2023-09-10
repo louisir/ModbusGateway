@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QLabel>
 
 #include "modbusrtuwidget.h"
 #include "modbustcpwidget.h"
@@ -30,6 +31,8 @@ private slots:
     void slot_update_rtu_wdgt(const QString& dir, const QByteArray& frame);
     void slot_update_tcp_wdgt(const QString& client_id, const QString& dir, const QByteArray& frame);
 
+    void slot_update_client_status(const QString& notify);
+
 private:
     Ui::MainWindow *ui;
 
@@ -42,6 +45,8 @@ private:
 
     modbus_rtu_worker* rtu_worker = nullptr;
     modbus_tcp_worker* tcp_worker = nullptr;
+
+    QLabel* label_status = nullptr;
 
 };
 #endif // MAINWINDOW_H

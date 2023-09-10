@@ -18,8 +18,7 @@ public:
     QStringList get_params() const;
 
 private:
-    Ui::ModbusTcpWidget *ui;
-
+    Ui::ModbusTcpWidget *ui;    
     void setIPAddr();
     void setPort();
 };

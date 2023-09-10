@@ -20,6 +20,8 @@ protected:
 signals:
     void sig_rcv(const QString& client_ip, const QString& client_port, const QByteArray& frame);
     void sig_update_tcp_wdgt(const QString& client, const QString& dir, const QByteArray& frame);
+    void sig_client_connected_notify(const QString& ip, const QString& port);
+    void sig_client_disconnected_notify(const QString& ip, const QString& port);
 
 public slots:
     void slot_send(QByteArray& frame);
@@ -30,6 +32,7 @@ private slots:
 
 private:
     const quint8 _min_tcp_frame_length = 12;
+    const quint32 _max_buff_size = 4096;
     QTcpSocket* _client = nullptr;
     QQueue<QByteArray> _trans_id_queue;
 };
@@ -45,6 +48,7 @@ signals:
     void sig_rcv(const QByteArray& frame);
     void sig_update_tcp_wdgt(const QString& client, const QString& dir, const QByteArray& frame);
     void sig_send(QByteArray& frame);
+    void sig_update_client_status(const QString& notify);
 
 public slots:
     void slot_quit_worker();
@@ -53,6 +57,8 @@ public slots:
     void slot_update_tcp_wdgt(const QString& client, const QString& dir, const QByteArray& frame);
 
 private:
+    void slot_client_connected_notify(const QString& ip, const QString& port);
+    void slot_client_disconnected_notify(const QString& ip, const QString& port);
     enum thread_params_idx{
         idx_ip,
         idx_port,        
