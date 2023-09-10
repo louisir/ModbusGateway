@@ -89,8 +89,7 @@ modbus_tcp_worker::modbus_tcp_worker(const QStringList& thread_params, QObject *
     quint16 port = _thread_params[idx_port].toUShort();
     if (!_modbus_tcp_server->listen(ip, port))
     {
-//        emit error("Failed to start server.");
-        qDebug() << "Failed to start server.";
+        emit sig_update_client_status("Failed to start server.");
         return;
     }
     this->moveToThread(&thread);

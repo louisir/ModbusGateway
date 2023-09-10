@@ -14,10 +14,10 @@ MainWindow::MainWindow(QWidget *parent)
     ui->horizontalLayout_2->setStretch(1, 17);
     ui->centralwidget->setLayout(ui->verticalLayout);
 
-    label_status = new QLabel("Modbus-RTU to Modbus-TCP Ready!", this);
+    label_status = new QLabel("No Modbus-TCP master", this);
     ui->statusbar->addWidget(label_status);
 
-    this->setWindowTitle(QString("ModbusRTU to ModbusTCP 软网关 by louis / louis.androidor@gmail.com"));
+    this->setWindowTitle(QString("Modbus-TCP to Modbus-RTU soft gateway - by louis / louis.androidor@gmail.com"));
 }
 
 MainWindow::~MainWindow()

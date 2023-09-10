@@ -1,6 +1,6 @@
 #include "transfer.h"
 
-#include <QDebug>
+//#include <QDebug>
 #include <QIODevice>
 
 transfer::transfer(QObject */*parent*/)

@@ -7,7 +7,6 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
-
     QTranslator translator;
     const QStringList uiLanguages = QLocale::system().uiLanguages();
     for (const QString &locale : uiLanguages) {
@@ -17,6 +16,8 @@ int main(int argc, char *argv[])
             break;
         }
     }
+    QIcon icon(":/res/logo.ico");
+    a.setWindowIcon(icon);
     MainWindow w;
     w.showMaximized();
     return a.exec();
