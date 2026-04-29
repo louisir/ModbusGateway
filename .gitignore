@@ -1,4 +1,6 @@
 build/
+dist/
+build_release/
 
 # C++ objects and libs
 *.slo

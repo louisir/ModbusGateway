@@ -63,6 +63,26 @@ mingw32-make -j2
 
 如果 `qmake` 或 `mingw32-make` 不在 `PATH` 中，请使用 Qt 安装目录里的完整路径。
 
+## 一键打包
+
+Windows 下可直接运行：
+
+```powershell
+.\package-release.bat -Version v0.4 -Clean
+```
+
+脚本会执行 release 构建、调用 `windeployqt` 收集 Qt 运行时依赖，并生成：
+
+```text
+dist/ModbusGateway-v0.4-win64.zip
+```
+
+如果需要同时推送 tag 并创建 GitHub Release，可在已安装并登录 `gh` CLI，或设置 `GH_TOKEN`/`GITHUB_TOKEN` 后运行：
+
+```powershell
+.\package-release.bat -Version v0.4 -Clean -Publish
+```
+
 ## 使用方法
 
 1. 启动程序。
@@ -203,6 +223,26 @@ mingw32-make -j2
 ```
 
 If `qmake` or `mingw32-make` is not available in `PATH`, use the full path from your Qt installation.
+
+## One-Command Packaging
+
+On Windows, run:
+
+```powershell
+.\package-release.bat -Version v0.4 -Clean
+```
+
+The script builds the release executable, runs `windeployqt` to collect Qt runtime dependencies, and creates:
+
+```text
+dist/ModbusGateway-v0.4-win64.zip
+```
+
+To also push the tag and create a GitHub Release, install and authenticate the `gh` CLI, or set `GH_TOKEN`/`GITHUB_TOKEN`, then run:
+
+```powershell
+.\package-release.bat -Version v0.4 -Clean -Publish
+```
 
 ## Usage
 
