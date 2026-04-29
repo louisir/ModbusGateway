@@ -12,14 +12,18 @@ class modbus_rtu_worker : public worker
 public:
     explicit modbus_rtu_worker(const QStringList& thread_params, QObject *parent = nullptr);
     ~modbus_rtu_worker();
+    bool is_running() const;
+    QString last_error() const;
 
 signals:
     void sig_rcv(const QByteArray& frame);
     void sig_update_rtu_wdgt(const QString& dir, const QByteArray& frame);
+    void sig_discard_tcp_transaction();
 
 public slots:
     void slot_quit_worker();
     void slot_tcp_to_rtu(const QByteArray& adu);
+    void slot_clear_pending_requests();
 
 private:
     enum thread_params_idx{
@@ -52,13 +56,21 @@ private:
 
 private slots:
     void slot_ready_read();
+    void slot_response_timeout();
 
 private:
     QByteArray _cache;
-    const quint8 _min_rtu_frame_length = 8;
+    const quint8 _min_rtu_frame_length = 5;
     const quint8 _max_addr = 247;
     const quint16 _max_cache_size = 4096;
-    QSerialPort* _serial = nullptr;    
+    const int _response_timeout_ms = 2000;
+    QSerialPort* _serial = nullptr;
+    QTimer* _response_timer = nullptr;
+    QQueue<QByteArray> _tx_queue;
+    QByteArray _pending_adu;
+    bool _waiting_response = false;
+    bool _running = false;
+    QString _last_error;
 
 private:
     quint8 get_addr(const QByteArray& rtu_frame);
@@ -75,6 +87,13 @@ private:
 
     bool check_crc(const QByteArray& rtu_frame);
     quint16 calc_modbus_rtu_crc(const QByteArray &data);
+    QByteArray append_crc(const QByteArray& adu);
+    int expected_rtu_frame_length(const QByteArray& data, int offset);
+    bool is_response_for_pending_request(const QByteArray& rtu_frame);
+    void handle_rtu_frame(const QByteArray& rtu_frame);
+    void send_next_request();
+    void finish_pending_request();
+    void emit_gateway_exception_response(const QByteArray& request_adu, quint8 exception_code);
 
 };
 

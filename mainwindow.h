@@ -22,9 +22,6 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-signals:
-    void sig_quit_worker();
-
 private slots:
     void on_btn_run_clicked();
 
@@ -34,12 +31,17 @@ private slots:
     void slot_update_client_status(const QString& notify);
 
 private:
+    void set_config_widgets_enabled(bool enabled);
+    void stop_workers();
+    bool start_workers();
+
+private:
     Ui::MainWindow *ui;
 
     const quint32 max_item_count = 50;
 
-    ModbusRtuWidget mbrtu_wdgt;
-    ModbusTcpWidget mbtcp_wdgt;
+    ModbusRtuWidget* mbrtu_wdgt = nullptr;
+    ModbusTcpWidget* mbtcp_wdgt = nullptr;
 
     transfer _transfer;
 

@@ -19,16 +19,7 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
-  <widget class="QWidget" name="gridLayoutWidget">
-   <property name="geometry">
-    <rect>
-     <x>189</x>
-     <y>70</y>
-     <width>201</width>
-     <height>80</height>
-    </rect>
-   </property>
-   <layout class="QGridLayout" name="gridLayout" rowstretch="0,0,10" columnstretch="1,2">
+  <layout class="QGridLayout" name="gridLayout" rowstretch="0,0,10" columnstretch="1,2">
     <property name="rightMargin">
      <number>0</number>
     </property>
@@ -100,8 +91,7 @@
       </property>
      </spacer>
     </item>
-   </layout>
-  </widget>
+  </layout>
  </widget>
  <resources/>
  <connections/>

@@ -27,7 +27,6 @@ ModbusRtuWidget::ModbusRtuWidget(QWidget *parent) :
     })
 {
     ui->setupUi(this);
-    this->setLayout(ui->gridLayout_3);
 
     setSerialPortNames();
     setBaudRate();
@@ -58,12 +57,15 @@ void ModbusRtuWidget::setBaudRate()
 {
     QList<qint32> baudRates = QSerialPortInfo::standardBaudRates();
     std::sort(baudRates.begin(), baudRates.end());
-    QStringList baudRateStrings;
-    for (int i = 0; i < baudRates.count(); i++) {
-        baudRateStrings.append(QString::number(baudRates.at(i)));
-    }
     ui->comboBox_BaudRate->clear();
-    ui->comboBox_BaudRate->addItems(baudRateStrings);
+    for (int i = 0; i < baudRates.count(); i++) {
+        const QString baudRate = QString::number(baudRates.at(i));
+        ui->comboBox_BaudRate->addItem(baudRate, baudRates.at(i));
+    }
+    const int defaultIndex = ui->comboBox_BaudRate->findData(9600);
+    if(defaultIndex >= 0){
+        ui->comboBox_BaudRate->setCurrentIndex(defaultIndex);
+    }
 }
 
 void ModbusRtuWidget::setDataBits()
@@ -71,12 +73,15 @@ void ModbusRtuWidget::setDataBits()
     QList<QSerialPort::DataBits> dataBits;
     dataBits << QSerialPort::Data5 << QSerialPort::Data6 << QSerialPort::Data7 << QSerialPort::Data8;
     std::sort(dataBits.begin(), dataBits.end());
-    QStringList dataBitStrings;
-    for (int i = 0; i < dataBits.count(); i++) {
-        dataBitStrings.append(QString::number(dataBits.at(i)));
-    }
     ui->comboBox_DataBits->clear();
-    ui->comboBox_DataBits->addItems(dataBitStrings);
+    for (int i = 0; i < dataBits.count(); i++) {
+        const QString dataBit = QString::number(dataBits.at(i));
+        ui->comboBox_DataBits->addItem(dataBit, static_cast<int>(dataBits.at(i)));
+    }
+    const int defaultIndex = ui->comboBox_DataBits->findData(static_cast<int>(QSerialPort::Data8));
+    if(defaultIndex >= 0){
+        ui->comboBox_DataBits->setCurrentIndex(defaultIndex);
+    }
 }
 
 void ModbusRtuWidget::setStopBits()
@@ -87,7 +92,7 @@ void ModbusRtuWidget::setStopBits()
         if (QSysInfo::kernelType() != "winnt" && it->first == QSerialPort::OneAndHalfStop) {
             continue;
         }
-        ui->comboBox_StopBits->addItem(it->second);
+        ui->comboBox_StopBits->addItem(it->second, static_cast<int>(it->first));
     }
 }
 
@@ -95,7 +100,7 @@ void ModbusRtuWidget::setFlowControl()
 {
     ui->comboBox_FlowCtrl->clear();
     for (auto it = m_FlowCtrl.begin(); it != m_FlowCtrl.end(); ++it) {
-        ui->comboBox_FlowCtrl->addItem(it->second);
+        ui->comboBox_FlowCtrl->addItem(it->second, static_cast<int>(it->first));
     }
 }
 
@@ -103,7 +108,7 @@ void ModbusRtuWidget::setParity()
 {
     ui->comboBox_Parity->clear();
     for (auto it = m_Parity.begin(); it != m_Parity.end(); ++it) {
-        ui->comboBox_Parity->addItem(it->second);
+        ui->comboBox_Parity->addItem(it->second, static_cast<int>(it->first));
     }
 }
 
@@ -111,10 +116,10 @@ QStringList ModbusRtuWidget::get_params() const
 {
     QStringList params;
     params << ui->comboBox_SerialName->currentText()
-           << ui->comboBox_BaudRate->currentText()
-           << ui->comboBox_DataBits->currentText()
-           << ui->comboBox_StopBits->currentText()
-           << QString::number(ui->comboBox_Parity->currentIndex())
-           << QString::number(ui->comboBox_FlowCtrl->currentIndex());
+           << ui->comboBox_BaudRate->currentData().toString()
+           << ui->comboBox_DataBits->currentData().toString()
+           << ui->comboBox_StopBits->currentData().toString()
+           << ui->comboBox_Parity->currentData().toString()
+           << ui->comboBox_FlowCtrl->currentData().toString();
     return params;
 }

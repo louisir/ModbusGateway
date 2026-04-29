@@ -10,7 +10,6 @@ ModbusTcpWidget::ModbusTcpWidget(QWidget *parent) :
     ui(new Ui::ModbusTcpWidget)
 {
     ui->setupUi(this);
-    this->setLayout(ui->gridLayout);
     setIPAddr();
     setPort();
 }

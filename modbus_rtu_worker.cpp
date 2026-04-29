@@ -14,20 +14,26 @@ modbus_rtu_worker::modbus_rtu_worker(const QStringList& thread_params, QObject *
     _serial->setFlowControl((QSerialPort::FlowControl)_thread_params[idx_flowctrl].toUInt());
     _serial->setReadBufferSize(2048);
     if(!_serial->open(QIODevice::ReadWrite)){
-        qWarning() << QString("open serial failed: name = %1, BaudRate = %2, DataBits = %3, StopBits = %4, Parity = %5, FlowControl = %6")
+        _last_error = QString("open serial failed: name = %1, BaudRate = %2, DataBits = %3, StopBits = %4, Parity = %5, FlowControl = %6, error = %7")
                           .arg(
                               _thread_params[idx_name],
                               _thread_params[idx_baudrate],
                               _thread_params[idx_databit],
                               _thread_params[idx_stopbit],
                               _thread_params[idx_parity],
-                              _thread_params[idx_flowctrl]
+                              _thread_params[idx_flowctrl],
+                              _serial->errorString()
                               );
+        qWarning() << _last_error;
         return;
     }
     connect(_serial, &QSerialPort::readyRead, this, &modbus_rtu_worker::slot_ready_read, Qt::DirectConnection);
-    this->moveToThread(&thread);
-    thread.start();
+
+    _response_timer = new QTimer(this);
+    _response_timer->setSingleShot(true);
+    connect(_response_timer, &QTimer::timeout, this, &modbus_rtu_worker::slot_response_timeout);
+
+    _running = true;
 }
 
 modbus_rtu_worker::~modbus_rtu_worker()
@@ -37,60 +43,91 @@ modbus_rtu_worker::~modbus_rtu_worker()
 
 void modbus_rtu_worker::slot_ready_read()
 {
-    if(_cache.length() > _max_cache_size){
-        _cache.clear();
-    }
-    QByteArray rtu_frame;
-    rtu_frame.append(_serial->readAll());
-    while (_serial->waitForReadyRead(_wait_timeout)) {
-        rtu_frame.append(_serial->readAll());
-    }    
-    if(rtu_frame.isEmpty()){
+    const QByteArray data = _serial->readAll();
+    if(data.isEmpty()){
         qWarning() << QString("serial recv empty data. serial port name = %1").arg(_thread_params[idx_name]);
         return;
-    }else{
-        if(rtu_frame.length() >= _min_rtu_frame_length){
-            if(is_complete_rtu_frame(rtu_frame)){
-                emit sig_rcv(rtu_frame);
-                emit sig_update_rtu_wdgt("->", rtu_frame);
-            }else{
-                _cache.append(rtu_frame);
-                rtu_frame.clear();
-                if(get_complete_rtu_frame(rtu_frame)){
-                    emit sig_rcv(rtu_frame);
-                    emit sig_update_rtu_wdgt("->", rtu_frame);
-                }
-            }
-            return;
-        }else{
-            _cache.append(rtu_frame);
-        }
+    }
+
+    _cache.append(data);
+    if(_cache.length() > _max_cache_size){
+        qWarning() << "Modbus RTU receive cache overflow. Discarding buffered data.";
+        _cache.clear();
+        return;
+    }
+
+    QByteArray rtu_frame;
+    while(get_complete_rtu_frame(rtu_frame)){
+        handle_rtu_frame(rtu_frame);
+        rtu_frame.clear();
     }
 }
 
 void modbus_rtu_worker::slot_quit_worker()
 {
-    _serial->close();
+    slot_clear_pending_requests();
+    if(_serial){
+        _serial->close();
+    }
+    _running = false;
 }
 
 void modbus_rtu_worker::slot_tcp_to_rtu(const QByteArray& adu)
 {
-    QByteArray modbus_rtu_frame = adu;
-    quint16 crc = calc_modbus_rtu_crc(adu);
-    modbus_rtu_frame.append(static_cast<quint8>(crc >> 8));
-    modbus_rtu_frame.append(static_cast<quint8>(crc & 0xFF));
-    _serial->write(modbus_rtu_frame);
-    emit sig_update_rtu_wdgt("<-", modbus_rtu_frame);
+    if(adu.length() < 2){
+        qWarning() << "Invalid Modbus RTU ADU from TCP side.";
+        return;
+    }
+    _tx_queue.enqueue(adu);
+    send_next_request();
+}
+
+void modbus_rtu_worker::slot_clear_pending_requests()
+{
+    _tx_queue.clear();
+    _pending_adu.clear();
+    _waiting_response = false;
+    _cache.clear();
+    if(_response_timer){
+        _response_timer->stop();
+    }
+    if(_serial){
+        _serial->clear(QSerialPort::Input);
+    }
+}
+
+bool modbus_rtu_worker::is_running() const
+{
+    return _running;
+}
+
+QString modbus_rtu_worker::last_error() const
+{
+    return _last_error;
+}
+
+void modbus_rtu_worker::slot_response_timeout()
+{
+    if(!_waiting_response || _pending_adu.isEmpty()){
+        return;
+    }
+
+    const QByteArray request_adu = _pending_adu;
+    qWarning() << "Modbus RTU response timeout.";
+    finish_pending_request();
+    emit_gateway_exception_response(request_adu, 0x0B);
+    send_next_request();
 }
 
 bool modbus_rtu_worker::check_crc(const QByteArray& rtu_frame)
 {
-    if (rtu_frame.length() < 8) {
+    if (rtu_frame.length() < _min_rtu_frame_length) {
         qWarning() << "Invalid Modbus RTU frame length.";
         return false;
     }
     QByteArray adu = rtu_frame.left(rtu_frame.length() - 2); // 去除CRC校验字段
-    quint16 rcv_crc = (static_cast<quint16>((rtu_frame.at(rtu_frame.length() - 2) << 8) | rtu_frame.at(rtu_frame.length() - 1)));
+    quint16 rcv_crc = (quint16(static_cast<quint8>(rtu_frame.at(rtu_frame.length() - 2))) << 8)
+                       | quint16(static_cast<quint8>(rtu_frame.at(rtu_frame.length() - 1)));
     quint16 calc_crc = calc_modbus_rtu_crc(adu);
 
     if (rcv_crc != calc_crc) {
@@ -103,7 +140,7 @@ bool modbus_rtu_worker::check_crc(const QByteArray& rtu_frame)
 
 quint8 modbus_rtu_worker::get_addr(const QByteArray& rtu_frame)
 {
-    quint8 addr = rtu_frame.at(idx_addr);
+    quint8 addr = static_cast<quint8>(rtu_frame.at(idx_addr));
     if(addr == 0 || addr > _max_addr){
         return 0;
     }
@@ -112,7 +149,7 @@ quint8 modbus_rtu_worker::get_addr(const QByteArray& rtu_frame)
 
 quint8 modbus_rtu_worker::get_func_code(const QByteArray& rtu_frame)
 {
-    quint8 func_code = rtu_frame.at(idx_func);
+    quint8 func_code = static_cast<quint8>(rtu_frame.at(idx_func));
     if(is_valid_func_code(func_code)){
         return func_code;
     }
@@ -121,14 +158,14 @@ quint8 modbus_rtu_worker::get_func_code(const QByteArray& rtu_frame)
 
 quint16 modbus_rtu_worker::get_crc(const QByteArray& rtu_frame)
 {
-    quint8 crc_h = rtu_frame.at(rtu_frame.length() - 2);
-    quint8 crc_l = rtu_frame.at(rtu_frame.length() - 1);
+    quint8 crc_h = static_cast<quint8>(rtu_frame.at(rtu_frame.length() - 2));
+    quint8 crc_l = static_cast<quint8>(rtu_frame.at(rtu_frame.length() - 1));
     return (quint16(crc_h) << 8) | quint16(crc_l);
 }
 
 bool modbus_rtu_worker::is_complete_rtu_frame(const QByteArray& rtu_frame)
 {
-    if(get_addr(rtu_frame) != 0 && get_func_code(rtu_frame) != 0){
+    if(rtu_frame.length() >= _min_rtu_frame_length && get_addr(rtu_frame) != 0 && get_func_code(rtu_frame) != 0){
         quint16 crc_calc_value = calc_modbus_rtu_crc(rtu_frame.left(rtu_frame.length() - 2));
         quint16 crc_rcv_value = get_crc(rtu_frame);
         if(crc_calc_value == crc_rcv_value){
@@ -140,63 +177,62 @@ bool modbus_rtu_worker::is_complete_rtu_frame(const QByteArray& rtu_frame)
 
 bool modbus_rtu_worker::get_complete_rtu_frame(QByteArray& rtu_frame)
 {
+    int first_candidate = -1;
+
     for(int i = 0; i < _cache.length(); i++){
-        quint8 byte_addr = _cache.at(i);
-        if(byte_addr > 0x00 && byte_addr <= _max_addr){
-            if(i + 1 == _cache.length()){
-                return false;
-            }else{
-                quint8 byte_fc = _cache.at(i + 1);
-                if(!is_valid_func_code(byte_fc)){
-                    continue;
-                }else{
-                    if(i + 2 == _cache.length()){
-                        return false;
-                    }
-                    quint8 byte_data_len = _cache.at(i + 2);
-                    if(i + 3 + byte_data_len + 2 > _cache.length()){
-                        return false;
-                    }else{
-                        QByteArray t_rtu_frame = _cache.mid(i, 3 + byte_data_len + 2);
-                        if(is_complete_rtu_frame(t_rtu_frame)){
-                            rtu_frame = t_rtu_frame;
-                            _cache.remove(0, i + 3 + byte_data_len + 2);
-                            return true;
-                        }else{
-                            continue;
-                        }
-                    }
-                }
-            }
+        quint8 byte_addr = static_cast<quint8>(_cache.at(i));
+        if(byte_addr == 0x00 || byte_addr > _max_addr){
+            continue;
         }
+
+        if(first_candidate < 0){
+            first_candidate = i;
+        }
+
+        const int frame_len = expected_rtu_frame_length(_cache, i);
+        if(frame_len == 0){
+            if(i > 0){
+                _cache.remove(0, i);
+            }
+            return false;
+        }
+        if(frame_len < 0){
+            continue;
+        }
+        if(i + frame_len > _cache.length()){
+            if(i > 0){
+                _cache.remove(0, i);
+            }
+            return false;
+        }
+
+        QByteArray t_rtu_frame = _cache.mid(i, frame_len);
+        if(is_complete_rtu_frame(t_rtu_frame)){
+            rtu_frame = t_rtu_frame;
+            _cache.remove(0, i + frame_len);
+            return true;
+        }
+    }
+
+    if(first_candidate > 0){
+        _cache.remove(0, first_candidate);
+    }else if(first_candidate < 0){
+        _cache.clear();
     }
     return false;
 }
 
 bool modbus_rtu_worker::is_valid_func_code(const quint8 fc)
 {
-    quint8 e_fc = fc - 0x80;
-    if(fc == fc_r_coil ||
-        fc == fc_r_discrete ||
-        fc == fc_r_holding ||
-        fc == fc_r_input ||
-        fc == fc_w_single_coil ||
-        fc == fc_w_single_holding ||
-        fc == fc_w_multiple_coils ||
-        fc == fc_w_multiple_holding){
-        return true;
-    }else if(e_fc == fc_r_coil ||
-               e_fc == fc_r_discrete ||
-               e_fc == fc_r_holding ||
-               e_fc == fc_r_input ||
-               e_fc == fc_w_single_coil ||
-               e_fc == fc_w_single_holding ||
-               e_fc == fc_w_multiple_coils ||
-               e_fc == fc_w_multiple_holding){
-        return true;
-    }else{
-        return false;
-    }
+    const quint8 normal_fc = fc & 0x7F;
+    return normal_fc == fc_r_coil ||
+           normal_fc == fc_r_discrete ||
+           normal_fc == fc_r_holding ||
+           normal_fc == fc_r_input ||
+           normal_fc == fc_w_single_coil ||
+           normal_fc == fc_w_single_holding ||
+           normal_fc == fc_w_multiple_coils ||
+           normal_fc == fc_w_multiple_holding;
 }
 
 quint16 modbus_rtu_worker::calc_modbus_rtu_crc(const QByteArray& data)
@@ -248,3 +284,144 @@ quint16 modbus_rtu_worker::calc_modbus_rtu_crc(const QByteArray& data)
     // 高低字节交换
     return (wCRCWord<<8) | (wCRCWord>>8);
 } // End: CRC16
+
+QByteArray modbus_rtu_worker::append_crc(const QByteArray& adu)
+{
+    QByteArray modbus_rtu_frame = adu;
+    quint16 crc = calc_modbus_rtu_crc(adu);
+    modbus_rtu_frame.append(static_cast<quint8>(crc >> 8));
+    modbus_rtu_frame.append(static_cast<quint8>(crc & 0xFF));
+    return modbus_rtu_frame;
+}
+
+int modbus_rtu_worker::expected_rtu_frame_length(const QByteArray& data, int offset)
+{
+    if(data.length() - offset < 2){
+        return 0;
+    }
+
+    const quint8 fc = static_cast<quint8>(data.at(offset + idx_func));
+    if(!is_valid_func_code(fc)){
+        return -1;
+    }
+
+    if(fc & 0x80){
+        return 5;
+    }
+
+    switch(fc){
+    case fc_r_coil:
+    case fc_r_discrete:
+    case fc_r_holding:
+    case fc_r_input:
+        if(data.length() - offset < 3){
+            return 0;
+        }
+        return 3 + static_cast<quint8>(data.at(offset + idx_data)) + 2;
+    case fc_w_single_coil:
+    case fc_w_single_holding:
+    case fc_w_multiple_coils:
+    case fc_w_multiple_holding:
+        return 8;
+    default:
+        return -1;
+    }
+}
+
+bool modbus_rtu_worker::is_response_for_pending_request(const QByteArray& rtu_frame)
+{
+    if(!_waiting_response || _pending_adu.length() < 2 || rtu_frame.length() < _min_rtu_frame_length){
+        return false;
+    }
+
+    const QByteArray response_adu = rtu_frame.left(rtu_frame.length() - 2);
+    const quint8 request_addr = static_cast<quint8>(_pending_adu.at(idx_addr));
+    const quint8 request_fc = static_cast<quint8>(_pending_adu.at(idx_func));
+    const quint8 response_addr = static_cast<quint8>(response_adu.at(idx_addr));
+    const quint8 response_fc = static_cast<quint8>(response_adu.at(idx_func));
+
+    return response_addr == request_addr &&
+           (response_fc == request_fc || response_fc == (request_fc | 0x80));
+}
+
+void modbus_rtu_worker::handle_rtu_frame(const QByteArray& rtu_frame)
+{
+    if(!is_response_for_pending_request(rtu_frame)){
+        qWarning() << "Ignoring unexpected Modbus RTU frame:" << rtu_frame.toHex();
+        return;
+    }
+
+    if(_response_timer){
+        _response_timer->stop();
+    }
+
+    emit sig_rcv(rtu_frame);
+    emit sig_update_rtu_wdgt("->", rtu_frame);
+    finish_pending_request();
+    send_next_request();
+}
+
+void modbus_rtu_worker::send_next_request()
+{
+    if(_waiting_response || _tx_queue.isEmpty()){
+        return;
+    }
+    if(!_serial || !_serial->isOpen()){
+        qWarning() << "Modbus RTU serial port is not open.";
+        while(!_tx_queue.isEmpty()){
+            emit_gateway_exception_response(_tx_queue.dequeue(), 0x0A);
+        }
+        return;
+    }
+
+    _pending_adu = _tx_queue.dequeue();
+    const QByteArray modbus_rtu_frame = append_crc(_pending_adu);
+    const qint64 bytes_written = _serial->write(modbus_rtu_frame);
+    if(bytes_written != modbus_rtu_frame.length()){
+        qWarning() << "Failed to write complete Modbus RTU frame.";
+        const QByteArray failed_adu = _pending_adu;
+        finish_pending_request();
+        emit_gateway_exception_response(failed_adu, 0x0A);
+        send_next_request();
+        return;
+    }
+
+    _serial->flush();
+    emit sig_update_rtu_wdgt("<-", modbus_rtu_frame);
+
+    const quint8 addr = static_cast<quint8>(_pending_adu.at(idx_addr));
+    if(addr == 0){
+        finish_pending_request();
+        emit sig_discard_tcp_transaction();
+        send_next_request();
+        return;
+    }
+
+    _waiting_response = true;
+    if(_response_timer){
+        _response_timer->start(_response_timeout_ms);
+    }
+}
+
+void modbus_rtu_worker::finish_pending_request()
+{
+    _waiting_response = false;
+    _pending_adu.clear();
+    if(_response_timer){
+        _response_timer->stop();
+    }
+}
+
+void modbus_rtu_worker::emit_gateway_exception_response(const QByteArray& request_adu, quint8 exception_code)
+{
+    if(request_adu.length() < 2){
+        emit sig_discard_tcp_transaction();
+        return;
+    }
+
+    QByteArray exception_adu;
+    exception_adu.append(request_adu.at(idx_addr));
+    exception_adu.append(static_cast<char>(static_cast<quint8>(request_adu.at(idx_func)) | 0x80));
+    exception_adu.append(static_cast<char>(exception_code));
+    emit sig_rcv(append_crc(exception_adu));
+}
