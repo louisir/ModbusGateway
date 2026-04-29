@@ -4,6 +4,13 @@
 
 ModbusGateway 是一个基于 Qt 的 Modbus 软网关工具，用于在 Modbus TCP 主站和 Modbus RTU 从站设备之间转发请求与响应。程序提供图形界面，可配置串口参数、TCP 监听地址和端口，并显示 TCP/RTU 两侧的实时收发帧。
 
+## 最新版本下载
+
+- 最新版本：`v0.4`
+- Windows 便携包：[ModbusGateway-v0.4-win64.zip](https://github.com/louisir/ModbusGateway/releases/download/v0.4/ModbusGateway-v0.4-win64.zip)
+- 源码包：[v0.4 source code](https://github.com/louisir/ModbusGateway/archive/refs/tags/v0.4.zip)
+- 全部发布版本：[GitHub Releases](https://github.com/louisir/ModbusGateway/releases)
+
 ## 功能特性
 
 - Modbus TCP 到 Modbus RTU 双向转换。
@@ -164,6 +171,13 @@ This project is licensed under the terms of the [LICENSE](LICENSE) file.
 [中文](#modbusgateway) | English
 
 ModbusGateway is a Qt-based Modbus software gateway. It forwards requests and responses between a Modbus TCP master and Modbus RTU slave devices. The application provides a GUI for serial port settings, TCP listening settings, and real-time TCP/RTU frame logs.
+
+## Latest Release Download
+
+- Latest version: `v0.4`
+- Windows portable package: [ModbusGateway-v0.4-win64.zip](https://github.com/louisir/ModbusGateway/releases/download/v0.4/ModbusGateway-v0.4-win64.zip)
+- Source archive: [v0.4 source code](https://github.com/louisir/ModbusGateway/archive/refs/tags/v0.4.zip)
+- All releases: [GitHub Releases](https://github.com/louisir/ModbusGateway/releases)
 
 ## Features
 
