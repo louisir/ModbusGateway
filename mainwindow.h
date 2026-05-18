@@ -43,7 +43,7 @@ private:
     ModbusRtuWidget* mbrtu_wdgt = nullptr;
     ModbusTcpWidget* mbtcp_wdgt = nullptr;
 
-    transfer _transfer;
+    transfer* _transfer = nullptr;
 
     modbus_rtu_worker* rtu_worker = nullptr;
     modbus_tcp_worker* tcp_worker = nullptr;

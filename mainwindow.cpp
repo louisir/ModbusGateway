@@ -30,8 +30,14 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_btn_run_clicked()
 {
-    assert(mbrtu_wdgt->isEnabled() == mbtcp_wdgt->isEnabled());
-    assert((tcp_worker == nullptr) == (rtu_worker == nullptr));
+    if(mbrtu_wdgt->isEnabled() != mbtcp_wdgt->isEnabled() ||
+        ((tcp_worker == nullptr) != (rtu_worker == nullptr))){
+        stop_workers();
+        set_config_widgets_enabled(true);
+        ui->btn_run->setText("运行");
+        label_status->setText("No Modbus-TCP master");
+        return;
+    }
 
     if(rtu_worker || tcp_worker){
         stop_workers();
@@ -86,28 +92,32 @@ void MainWindow::set_config_widgets_enabled(bool enabled)
 
 void MainWindow::stop_workers()
 {
-    if(rtu_worker){
-        rtu_worker->slot_quit_worker();
-    }
     if(tcp_worker){
-        tcp_worker->slot_quit_worker();
+        tcp_worker->stop();
+    }
+    if(rtu_worker){
+        rtu_worker->stop();
     }
 
-    delete rtu_worker;
-    rtu_worker = nullptr;
+    delete _transfer;
+    _transfer = nullptr;
     delete tcp_worker;
     tcp_worker = nullptr;
+    delete rtu_worker;
+    rtu_worker = nullptr;
 }
 
 bool MainWindow::start_workers()
 {
-    assert(!rtu_worker);
-    assert(!tcp_worker);
+    if(rtu_worker || tcp_worker || _transfer){
+        stop_workers();
+    }
 
     rtu_worker = new modbus_rtu_worker(mbrtu_wdgt->get_params());
     if(!rtu_worker->is_running()){
         const QString error = rtu_worker->last_error().isEmpty() ? "Failed to start Modbus RTU worker." : rtu_worker->last_error();
         label_status->setText(error);
+        stop_workers();
         return false;
     }
 
@@ -115,19 +125,29 @@ bool MainWindow::start_workers()
     if(!tcp_worker->is_running()){
         const QString error = tcp_worker->last_error().isEmpty() ? "Failed to start Modbus TCP server." : tcp_worker->last_error();
         label_status->setText(error);
+        stop_workers();
         return false;
     }
 
-    connect(rtu_worker, &modbus_rtu_worker::sig_rcv, &_transfer, &transfer::slot_rcv_from_rtu, Qt::QueuedConnection);
+    _transfer = new transfer(this);
+
+    connect(rtu_worker, &modbus_rtu_worker::sig_rcv, _transfer, &transfer::slot_rcv_from_rtu, Qt::QueuedConnection);
     connect(rtu_worker, &modbus_rtu_worker::sig_update_rtu_wdgt, this, &MainWindow::slot_update_rtu_wdgt, Qt::QueuedConnection);
     connect(rtu_worker, &modbus_rtu_worker::sig_discard_tcp_transaction, tcp_worker, &modbus_tcp_worker::slot_discard_pending_transaction, Qt::QueuedConnection);
-    connect(&_transfer, &transfer::sig_tcp_to_rtu, rtu_worker, &modbus_rtu_worker::slot_tcp_to_rtu, Qt::QueuedConnection);
+    connect(_transfer, &transfer::sig_tcp_to_rtu, rtu_worker, &modbus_rtu_worker::slot_tcp_to_rtu, Qt::QueuedConnection);
 
-    connect(tcp_worker, &modbus_tcp_worker::sig_rcv, &_transfer, &transfer::slot_rcv_from_tcp, Qt::QueuedConnection);
+    connect(tcp_worker, &modbus_tcp_worker::sig_rcv, _transfer, &transfer::slot_rcv_from_tcp, Qt::QueuedConnection);
     connect(tcp_worker, &modbus_tcp_worker::sig_update_tcp_wdgt, this, &MainWindow::slot_update_tcp_wdgt, Qt::QueuedConnection);
     connect(tcp_worker, &modbus_tcp_worker::sig_update_client_status, this, &MainWindow::slot_update_client_status, Qt::QueuedConnection);
-    connect(tcp_worker, &modbus_tcp_worker::sig_client_disconnected, rtu_worker, &modbus_rtu_worker::slot_clear_pending_requests, Qt::QueuedConnection);
-    connect(&_transfer, &transfer::sig_rtu_to_tcp, tcp_worker, &modbus_tcp_worker::slot_rtu_to_tcp, Qt::QueuedConnection);
+    connect(tcp_worker, &modbus_tcp_worker::sig_client_disconnected, rtu_worker, &modbus_rtu_worker::slot_clear_pending_requests_for_session, Qt::BlockingQueuedConnection);
+    connect(_transfer, &transfer::sig_rtu_to_tcp, tcp_worker, &modbus_tcp_worker::slot_rtu_to_tcp, Qt::QueuedConnection);
+
+    const bool accepting_enabled = QMetaObject::invokeMethod(tcp_worker, "slot_set_accepting_clients", Qt::BlockingQueuedConnection, Q_ARG(bool, true));
+    if(!accepting_enabled){
+        label_status->setText("Failed to enable Modbus TCP client acceptance.");
+        stop_workers();
+        return false;
+    }
 
     label_status->setText("No Modbus-TCP master");
     return true;

@@ -1,9 +1,7 @@
 ﻿
 #include "modbusassistant.h"
 
-#include <QByteArray>
-#include <QDataStream>
-#include <QIODevice>
+#include <QRegularExpression>
 
 const quint16 ModbusAssistant::m_maxAddrCount = 20;
 const QColor ModbusAssistant::m_addrTypeColors[ModbusAddrTypeTotal] = {
@@ -31,6 +29,15 @@ const QString ModbusAssistant::m_regExp4ValueRange = "^[0-9,\\[\\]\\(\\)\\|\\&!]
 // 生成频率正则表达式
 const QString ModbusAssistant::m_regExp4Frequency = "^[0-9+\\-*/()]+$";
 
+namespace
+{
+bool is_valid_modbus_addr(const QString& modbusAddr)
+{
+    static const QRegularExpression regex(QString("^(?:%1)$").arg(ModbusAssistant::m_regExp4ModbusAddr));
+    return regex.match(modbusAddr).hasMatch();
+}
+}
+
 ModbusAssistant::ModbusAssistant()
 {
 
@@ -38,15 +45,42 @@ ModbusAssistant::ModbusAssistant()
 
 ModbusAssistant::ModbusAddrIndex ModbusAssistant::GetIndexFromModbusAddr(const QString& modbusAddr)
 {
-    quint8 highDigital = modbusAddr.first(1).toUInt();
-    assert(highDigital == ModbusAssistant::Coil || highDigital == ModbusAssistant::Discrete || highDigital == ModbusAssistant::Input || highDigital == ModbusAssistant::Holding);
-    return (ModbusAssistant::ModbusAddrIndex)highDigital;
+    if(!is_valid_modbus_addr(modbusAddr)){
+        return ModbusAssistant::Placeholder;
+    }
+
+    bool ok = false;
+    const quint8 highDigital = modbusAddr.first(1).toUInt(&ok);
+    if(!ok){
+        return ModbusAssistant::Placeholder;
+    }
+
+    switch(highDigital){
+    case ModbusAssistant::Coil:
+    case ModbusAssistant::Discrete:
+    case ModbusAssistant::Input:
+    case ModbusAssistant::Holding:
+        return static_cast<ModbusAssistant::ModbusAddrIndex>(highDigital);
+    default:
+        return ModbusAssistant::Placeholder;
+    }
 }
 
 QString ModbusAssistant::ModbusAddr2RegAddr(const QString& modbusAddr)
 {
-    quint16 base = (quint16)(ModbusAssistant::GetIndexFromModbusAddr(modbusAddr)) * 10000 + 1;
-    quint16 regAddr = modbusAddr.toUInt() - base;
+    const ModbusAssistant::ModbusAddrIndex addrIndex = ModbusAssistant::GetIndexFromModbusAddr(modbusAddr);
+    if(addrIndex == ModbusAssistant::Placeholder){
+        return QString();
+    }
+
+    bool ok = false;
+    const quint32 modbusAddrValue = modbusAddr.toUInt(&ok);
+    const quint32 base = static_cast<quint32>(addrIndex) * 10000 + 1;
+    if(!ok || modbusAddrValue < base){
+        return QString();
+    }
+
+    const quint32 regAddr = modbusAddrValue - base;
     QString decRegAddr = QString::number(regAddr).rightJustified(4, '0');
     QString hexRegAddr = "0x" + QString::number(regAddr, 16).toUpper().rightJustified(4, '0');
     return QString("%1 (%2)").arg(decRegAddr, hexRegAddr);
@@ -60,7 +94,7 @@ QColor ModbusAssistant::GetColorByModbusAddr(const QString& modbusAddr)
 void ModbusAssistant::ThrowMsgBox(const QMessageBox::Icon& icon, const QString& msg, const QString& title)
 {
     QMessageBox msgBox;
-    msgBox.setWindowIcon(QIcon(":/images/ModbusVis.png"));
+    msgBox.setWindowIcon(QIcon(":/res/logo.ico"));
     msgBox.setIcon(icon);
     msgBox.setText(msg);
     msgBox.setWindowTitle(title);
