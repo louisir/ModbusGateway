@@ -41,6 +41,11 @@ ModbusRtuWidget::~ModbusRtuWidget()
     delete ui;
 }
 
+void ModbusRtuWidget::on_btn_clear_log_clicked()
+{
+    emit sig_clear_log_requested();
+}
+
 void ModbusRtuWidget::setSerialPortNames()
 {
     QStringList portNames;

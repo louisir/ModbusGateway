@@ -19,7 +19,7 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
-  <layout class="QGridLayout" name="gridLayout_3" rowstretch="0,0,0,0,0,0,7" columnstretch="1,2">
+  <layout class="QGridLayout" name="gridLayout_3" rowstretch="0,0,0,0,0,0,0,7" columnstretch="1,2">
     <item row="4" column="0">
      <widget class="QLabel" name="label_5">
       <property name="text">
@@ -81,6 +81,13 @@
      </widget>
     </item>
     <item row="6" column="0" colspan="2">
+     <widget class="QPushButton" name="btn_clear_log">
+      <property name="text">
+       <string>清空 RTU 日志</string>
+      </property>
+     </widget>
+    </item>
+    <item row="7" column="0" colspan="2">
      <spacer name="verticalSpacer">
       <property name="orientation">
        <enum>Qt::Vertical</enum>

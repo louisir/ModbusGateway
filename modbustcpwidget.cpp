@@ -21,6 +21,11 @@ ModbusTcpWidget::~ModbusTcpWidget()
     delete ui;
 }
 
+void ModbusTcpWidget::on_btn_clear_log_clicked()
+{
+    emit sig_clear_log_requested();
+}
+
 void ModbusTcpWidget::setIPAddr()
 {
     QList<QString> ipv4Addresses;

@@ -18,6 +18,12 @@ public:
 
     QStringList get_params() const;
 
+signals:
+    void sig_clear_log_requested();
+
+private slots:
+    void on_btn_clear_log_clicked();
+
 private:
     Ui::ModbusRtuWidget *ui;
 

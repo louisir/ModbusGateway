@@ -60,22 +60,25 @@
       <item>
        <widget class="QLabel" name="label_direction">
         <property name="text">
-         <string>方向：</string>
+         <string>模式：</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QComboBox" name="comboBox_direction">
-        <item>
-         <property name="text">
-          <string>RTU &lt;- TCP</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>RTU -&gt; TCP</string>
-         </property>
-        </item>
+       <widget class="QRadioButton" name="radioButton_tcp_to_rtu">
+        <property name="text">
+         <string>上位机 TCP -&gt; 下位机 RTU</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="radioButton_rtu_to_tcp">
+        <property name="text">
+         <string>上位机 RTU -&gt; 下位机 TCP</string>
+        </property>
        </widget>
       </item>
       <item>

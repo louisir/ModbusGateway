@@ -530,15 +530,15 @@ void modbus_tcp_worker::slot_update_tcp_wdgt(const QString& client, const QStrin
 void modbus_tcp_worker::slot_client_connected_notify(const QString& ip, const QString& port)
 {
     emit sig_update_client_status(_mode == GatewayMode::RtuToTcp
-                                      ? QString("Modbus TCP slave %1:%2 connected").arg(ip, port)
-                                      : QString("%1:%2 connected").arg(ip, port));
+                                      ? QString("下位机 TCP %1:%2 已连接").arg(ip, port)
+                                      : QString("上位机 TCP %1:%2 已连接").arg(ip, port));
 }
 
 void modbus_tcp_worker::slot_client_disconnected_notify(const QString& ip, const QString& port, quint64 tcp_session_id)
 {
     emit sig_update_client_status(_mode == GatewayMode::RtuToTcp
-                                      ? QString("Modbus TCP slave %1:%2 disconnected").arg(ip, port)
-                                      : QString("%1:%2 disconnected").arg(ip, port));
+                                      ? QString("下位机 TCP %1:%2 已断开").arg(ip, port)
+                                      : QString("上位机 TCP %1:%2 已断开").arg(ip, port));
     emit sig_client_disconnected(tcp_session_id);
 }
 

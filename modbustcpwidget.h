@@ -20,6 +20,12 @@ public:
     QStringList get_params() const;
     void set_gateway_mode(GatewayMode mode);
 
+signals:
+    void sig_clear_log_requested();
+
+private slots:
+    void on_btn_clear_log_clicked();
+
 private:
     Ui::ModbusTcpWidget *ui;    
     void setIPAddr();

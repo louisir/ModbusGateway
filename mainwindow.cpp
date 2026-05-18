@@ -1,6 +1,16 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
+#include <QAbstractItemView>
+#include <QApplication>
+#include <QClipboard>
+#include <QEvent>
+#include <QKeyEvent>
+#include <QKeySequence>
+#include <QListWidget>
+#include <QListWidgetItem>
+#include <QRadioButton>
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -16,7 +26,22 @@ MainWindow::MainWindow(QWidget *parent)
     ui->horizontalLayout_2->setStretch(0, 3);
     ui->horizontalLayout_2->setStretch(1, 17);
 
-    label_status = new QLabel("No Modbus-TCP master", this);
+    setup_log_list(ui->lst_wdgt_rtu);
+    setup_log_list(ui->lst_wdgt_tcp);
+    connect(mbrtu_wdgt, &ModbusRtuWidget::sig_clear_log_requested, ui->lst_wdgt_rtu, &QListWidget::clear);
+    connect(mbtcp_wdgt, &ModbusTcpWidget::sig_clear_log_requested, ui->lst_wdgt_tcp, &QListWidget::clear);
+    connect(ui->radioButton_tcp_to_rtu, &QRadioButton::toggled, this, [this](bool checked){
+        if(checked){
+            slot_gateway_mode_changed();
+        }
+    });
+    connect(ui->radioButton_rtu_to_tcp, &QRadioButton::toggled, this, [this](bool checked){
+        if(checked){
+            slot_gateway_mode_changed();
+        }
+    });
+
+    label_status = new QLabel("等待上位机 TCP 连接", this);
     ui->statusbar->addWidget(label_status);
 
     update_gateway_mode_ui();
@@ -27,6 +52,20 @@ MainWindow::~MainWindow()
 {
     stop_workers();
     delete ui;
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    if((watched == ui->lst_wdgt_rtu || watched == ui->lst_wdgt_tcp) &&
+        event->type() == QEvent::KeyPress){
+        QKeyEvent* key_event = static_cast<QKeyEvent*>(event);
+        if(key_event->matches(QKeySequence::Copy)){
+            copy_selected_log_items(qobject_cast<QListWidget*>(watched));
+            return true;
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::on_btn_run_clicked()
@@ -58,7 +97,7 @@ void MainWindow::on_btn_run_clicked()
     }
 }
 
-void MainWindow::on_comboBox_direction_currentIndexChanged(int)
+void MainWindow::slot_gateway_mode_changed()
 {
     if(rtu_worker || tcp_worker){
         return;
@@ -98,7 +137,8 @@ void MainWindow::set_config_widgets_enabled(bool enabled)
 {
     mbrtu_wdgt->setEnabled(enabled);
     mbtcp_wdgt->setEnabled(enabled);
-    ui->comboBox_direction->setEnabled(enabled);
+    ui->radioButton_tcp_to_rtu->setEnabled(enabled);
+    ui->radioButton_rtu_to_tcp->setEnabled(enabled);
 }
 
 void MainWindow::stop_workers()
@@ -164,18 +204,18 @@ bool MainWindow::start_workers()
         }
     }
 
-    label_status->setText(mode == GatewayMode::TcpToRtu ? "No Modbus-TCP master" : "Connected to Modbus-TCP slave");
+    label_status->setText(mode == GatewayMode::TcpToRtu ? "等待上位机 TCP 连接" : "已连接下位机 TCP");
     return true;
 }
 
 GatewayMode MainWindow::current_gateway_mode() const
 {
-    return ui->comboBox_direction->currentIndex() == 1 ? GatewayMode::RtuToTcp : GatewayMode::TcpToRtu;
+    return ui->radioButton_rtu_to_tcp->isChecked() ? GatewayMode::RtuToTcp : GatewayMode::TcpToRtu;
 }
 
 QString MainWindow::idle_status_text() const
 {
-    return current_gateway_mode() == GatewayMode::TcpToRtu ? "No Modbus-TCP master" : "Ready to connect Modbus-TCP slave";
+    return current_gateway_mode() == GatewayMode::TcpToRtu ? "等待上位机 TCP 连接" : "准备连接下位机 TCP";
 }
 
 void MainWindow::update_gateway_mode_ui()
@@ -183,6 +223,39 @@ void MainWindow::update_gateway_mode_ui()
     const GatewayMode mode = current_gateway_mode();
     mbtcp_wdgt->set_gateway_mode(mode);
     this->setWindowTitle(mode == GatewayMode::TcpToRtu
-                             ? QString("Modbus TCP master to RTU slave gateway - by louis / louis.androidor@gmail.com")
-                             : QString("Modbus RTU master to TCP slave gateway - by louis / louis.androidor@gmail.com"));
+                             ? QString("上位机 TCP -> 下位机 RTU - ModbusGateway")
+                             : QString("上位机 RTU -> 下位机 TCP - ModbusGateway"));
+}
+
+void MainWindow::setup_log_list(QListWidget* list_widget)
+{
+    if(!list_widget){
+        return;
+    }
+
+    list_widget->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    list_widget->setSelectionBehavior(QAbstractItemView::SelectRows);
+    list_widget->setSelectionRectVisible(true);
+    list_widget->installEventFilter(this);
+}
+
+void MainWindow::copy_selected_log_items(QListWidget* list_widget) const
+{
+    if(!list_widget){
+        return;
+    }
+
+    QStringList lines;
+    for(int row = 0; row < list_widget->count(); ++row){
+        QListWidgetItem* item = list_widget->item(row);
+        if(item && item->isSelected()){
+            lines << item->text();
+        }
+    }
+
+    if(lines.isEmpty()){
+        return;
+    }
+
+    QApplication::clipboard()->setText(lines.join('\n'));
 }

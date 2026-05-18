@@ -4,6 +4,9 @@
 #include <QMainWindow>
 #include <QLabel>
 
+class QEvent;
+class QListWidget;
+
 #include "gateway_mode.h"
 #include "modbusrtuwidget.h"
 #include "modbustcpwidget.h"
@@ -23,9 +26,12 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private slots:
     void on_btn_run_clicked();
-    void on_comboBox_direction_currentIndexChanged(int index);
+    void slot_gateway_mode_changed();
 
     void slot_update_rtu_wdgt(const QString& dir, const QByteArray& frame);
     void slot_update_tcp_wdgt(const QString& client_id, const QString& dir, const QByteArray& frame);
@@ -39,6 +45,8 @@ private:
     GatewayMode current_gateway_mode() const;
     QString idle_status_text() const;
     void update_gateway_mode_ui();
+    void setup_log_list(QListWidget* list_widget);
+    void copy_selected_log_items(QListWidget* list_widget) const;
 
 private:
     Ui::MainWindow *ui;
