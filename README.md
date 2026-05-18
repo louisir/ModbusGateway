@@ -6,9 +6,9 @@ ModbusGateway 是一个基于 Qt 的 Modbus 软网关工具，用于在 Modbus T
 
 ## 最新版本下载
 
-- 最新版本：`v0.4`
-- Windows 便携包：[ModbusGateway-v0.4-win64.zip](https://github.com/louisir/ModbusGateway/releases/download/v0.4/ModbusGateway-v0.4-win64.zip)
-- 源码包：[v0.4 source code](https://github.com/louisir/ModbusGateway/archive/refs/tags/v0.4.zip)
+- 最新版本：`v0.6`
+- Windows 便携包：[ModbusGateway-v0.6-win64.zip](https://github.com/louisir/ModbusGateway/releases/download/v0.6/ModbusGateway-v0.6-win64.zip)
+- 源码包：[v0.6 source code](https://github.com/louisir/ModbusGateway/archive/refs/tags/v0.6.zip)
 - 全部发布版本：[GitHub Releases](https://github.com/louisir/ModbusGateway/releases)
 
 ## 功能特性
@@ -75,20 +75,22 @@ mingw32-make -j2
 Windows 下可直接运行：
 
 ```powershell
-.\package-release.bat -Version v0.4 -Clean
+.\package-release.bat -Version v0.6 -Clean
 ```
 
 脚本会执行 release 构建、调用 `windeployqt` 收集 Qt 运行时依赖，并生成：
 
 ```text
-dist/ModbusGateway-v0.4-win64.zip
+dist/ModbusGateway-v0.6-win64.zip
 ```
 
 如果需要同时推送 tag 并创建 GitHub Release，可在已安装并登录 `gh` CLI，或设置 `GH_TOKEN`/`GITHUB_TOKEN` 后运行：
 
 ```powershell
-.\package-release.bat -Version v0.4 -Clean -Publish
+.\package-release.bat -Version v0.6 -Clean -Publish
 ```
+
+发布新版本时，需要同步更新本 README 的“最新版本下载”和“一键打包”示例中的版本号、下载链接和产物文件名。
 
 ## 使用方法
 
@@ -174,9 +176,9 @@ ModbusGateway is a Qt-based Modbus software gateway. It forwards requests and re
 
 ## Latest Release Download
 
-- Latest version: `v0.4`
-- Windows portable package: [ModbusGateway-v0.4-win64.zip](https://github.com/louisir/ModbusGateway/releases/download/v0.4/ModbusGateway-v0.4-win64.zip)
-- Source archive: [v0.4 source code](https://github.com/louisir/ModbusGateway/archive/refs/tags/v0.4.zip)
+- Latest version: `v0.6`
+- Windows portable package: [ModbusGateway-v0.6-win64.zip](https://github.com/louisir/ModbusGateway/releases/download/v0.6/ModbusGateway-v0.6-win64.zip)
+- Source archive: [v0.6 source code](https://github.com/louisir/ModbusGateway/archive/refs/tags/v0.6.zip)
 - All releases: [GitHub Releases](https://github.com/louisir/ModbusGateway/releases)
 
 ## Features
@@ -243,20 +245,22 @@ If `qmake` or `mingw32-make` is not available in `PATH`, use the full path from 
 On Windows, run:
 
 ```powershell
-.\package-release.bat -Version v0.4 -Clean
+.\package-release.bat -Version v0.6 -Clean
 ```
 
 The script builds the release executable, runs `windeployqt` to collect Qt runtime dependencies, and creates:
 
 ```text
-dist/ModbusGateway-v0.4-win64.zip
+dist/ModbusGateway-v0.6-win64.zip
 ```
 
 To also push the tag and create a GitHub Release, install and authenticate the `gh` CLI, or set `GH_TOKEN`/`GITHUB_TOKEN`, then run:
 
 ```powershell
-.\package-release.bat -Version v0.4 -Clean -Publish
+.\package-release.bat -Version v0.6 -Clean -Publish
 ```
+
+When publishing a new version, also update the version number, download links, and artifact filename in this README's "Latest Release Download" and "One-Command Packaging" sections.
 
 ## Usage
 

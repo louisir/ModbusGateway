@@ -153,6 +153,38 @@ function Create-ReleaseNotes {
     Set-Content -LiteralPath $Path -Value $content -Encoding UTF8
 }
 
+function Test-ReadmeReleaseVersion {
+    param([string]$Version)
+
+    $readmePath = Join-Path $RootDir "README.md"
+    if (-not (Test-Path -LiteralPath $readmePath)) {
+        return
+    }
+
+    $content = Get-Content -Raw -LiteralPath $readmePath
+    $zipName = "$TargetName-$Version-$Platform.zip"
+    $expected = @(
+        ('- 最新版本：`{0}`' -f $Version),
+        ('- Latest version: `{0}`' -f $Version),
+        $zipName,
+        ("releases/download/$Version/$zipName"),
+        ("archive/refs/tags/$Version.zip"),
+        (".\package-release.bat -Version $Version -Clean"),
+        (".\package-release.bat -Version $Version -Clean -Publish")
+    )
+
+    $missing = @()
+    foreach ($item in $expected) {
+        if (-not $content.Contains($item)) {
+            $missing += $item
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        throw "README.md is not synchronized with $Version. Update the latest-release download links and packaging examples before packaging. Missing: $($missing -join '; ')"
+    }
+}
+
 function Publish-WithGitHubApi {
     param(
         [string]$Repo,
@@ -237,6 +269,7 @@ if (-not $Version) {
 if ($Version -notmatch '^v\d+\.\d+(?:\.\d+)?$') {
     throw "Version must look like v0.4 or v1.2.3. Current value: $Version"
 }
+Test-ReadmeReleaseVersion $Version
 
 $DistDir = Join-Path $RootDir "dist"
 $BuildDir = Join-Path $RootDir "build_release"
