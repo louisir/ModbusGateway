@@ -186,7 +186,7 @@ bool modbus_tcp_server::send_gateway_exception(QTcpSocket* client, const QByteAr
     if(!queue_response(client, response)){
         return false;
     }
-    emit sig_update_tcp_wdgt(QString("%1:%2").arg(client->peerAddress().toString(), QString::number(client->peerPort())), "->", response);
+    emit sig_update_tcp_wdgt(QString("%1:%2").arg(client->peerAddress().toString(), QString::number(client->peerPort())), "<-", response);
     return true;
 }
 
@@ -237,7 +237,7 @@ void modbus_tcp_server::slot_send(const QByteArray& frame, quint64 tcp_session_i
     if(!queue_response(_client, response)){
         return;
     }
-    emit sig_update_tcp_wdgt(QString("%1:%2").arg(_client->peerAddress().toString(), QString::number(_client->peerPort())), "->", response);
+    emit sig_update_tcp_wdgt(QString("%1:%2").arg(_client->peerAddress().toString(), QString::number(_client->peerPort())), "<-", response);
     return;
 }
 
@@ -254,8 +254,161 @@ void modbus_tcp_server::slot_discard_pending_transaction(quint64 tcp_session_id)
     }
 }
 
-modbus_tcp_worker::modbus_tcp_worker(const QStringList& thread_params, QObject *parent)
-    : worker{thread_params, parent}
+modbus_tcp_client::modbus_tcp_client(QObject* parent)
+    : QObject(parent)
+{
+}
+
+modbus_tcp_client::~modbus_tcp_client()
+{
+    slot_disconnect();
+}
+
+bool modbus_tcp_client::connect_to_host(const QHostAddress& address, quint16 port, int timeout_ms)
+{
+    _socket = new QTcpSocket(this);
+    _socket->setReadBufferSize(_max_buff_size);
+    _host = address.toString();
+    _port = QString::number(port);
+
+    connect(_socket, &QTcpSocket::readyRead, this, &modbus_tcp_client::slot_read_ready);
+    connect(_socket, &QTcpSocket::disconnected, this, &modbus_tcp_client::slot_disconnected);
+
+    _socket->connectToHost(address, port);
+    if(!_socket->waitForConnected(timeout_ms)){
+        _last_error = _socket->errorString();
+        delete _socket;
+        _socket = nullptr;
+        return false;
+    }
+
+    emit sig_client_connected_notify(_host, _port);
+    return true;
+}
+
+QString modbus_tcp_client::error_string() const
+{
+    return _last_error;
+}
+
+bool modbus_tcp_client::queue_request(const QByteArray& request)
+{
+    if(!_socket || _socket->state() != QAbstractSocket::ConnectedState || request.isEmpty()){
+        return false;
+    }
+
+    qint64 total_written = 0;
+    while(total_written < request.size()){
+        const qint64 written = _socket->write(request.constData() + total_written,
+                                             request.size() - total_written);
+        if(written <= 0){
+            _last_error = _socket->errorString();
+            qWarning() << "Failed to queue Modbus TCP request:" << _last_error;
+            _socket->abort();
+            return false;
+        }
+        total_written += written;
+    }
+    return true;
+}
+
+void modbus_tcp_client::slot_send(const QByteArray& frame, quint64 tcp_session_id)
+{
+    Q_UNUSED(tcp_session_id);
+
+    if(frame.size() < _min_tcp_frame_length){
+        qWarning() << "Invalid Modbus TCP request frame length.";
+        return;
+    }
+
+    if(!queue_request(frame)){
+        if(_socket){
+            _socket->abort();
+        }else{
+            emit sig_client_disconnected_notify(_host, _port, 0);
+        }
+        return;
+    }
+
+    emit sig_update_tcp_wdgt(QString("%1:%2").arg(_host, _port), "<-", frame);
+}
+
+void modbus_tcp_client::slot_disconnect()
+{
+    if(!_socket){
+        return;
+    }
+
+    QTcpSocket* socket = _socket;
+    _socket = nullptr;
+    socket->disconnect(this);
+    socket->abort();
+    socket->close();
+    delete socket;
+    _rx_buffer.clear();
+}
+
+void modbus_tcp_client::slot_read_ready()
+{
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+    if(!socket || socket != _socket){
+        return;
+    }
+
+    _rx_buffer.append(socket->readAll());
+    if(_rx_buffer.length() > _max_buff_size){
+        qWarning() << "Modbus TCP receive buffer overflow. Discarding buffered data.";
+        _rx_buffer.clear();
+        return;
+    }
+
+    while(_rx_buffer.length() >= _min_tcp_frame_length){
+        const quint16 protocol_id = (quint16(static_cast<quint8>(_rx_buffer.at(2))) << 8)
+                                    | quint16(static_cast<quint8>(_rx_buffer.at(3)));
+        const quint16 pdu_len = (quint16(static_cast<quint8>(_rx_buffer.at(4))) << 8)
+                                | quint16(static_cast<quint8>(_rx_buffer.at(5)));
+        if(protocol_id != 0 || pdu_len < 2 || pdu_len > 254){
+            qWarning() << "Invalid Modbus TCP MBAP header. Resynchronizing stream.";
+            _rx_buffer.remove(0, 1);
+            continue;
+        }
+
+        const int frame_len = 6 + pdu_len;
+        if(_rx_buffer.length() < frame_len){
+            break;
+        }
+
+        QByteArray frame = _rx_buffer.left(frame_len);
+        _rx_buffer.remove(0, frame_len);
+        emit sig_rcv(socket->peerAddress().toString(), QString::number(socket->peerPort()), frame, 0);
+    }
+}
+
+void modbus_tcp_client::slot_disconnected()
+{
+    QTcpSocket* socket = qobject_cast<QTcpSocket*>(sender());
+    if(!socket || socket != _socket){
+        if(socket){
+            socket->deleteLater();
+        }
+        return;
+    }
+
+    const QString ip = _host;
+    const QString port = _port;
+    _rx_buffer.clear();
+    ++_session_id;
+    if(_session_id == 0){
+        _session_id = 1;
+    }
+    socket->deleteLater();
+    _socket = nullptr;
+    emit sig_client_disconnected_notify(ip, port, 0);
+}
+
+modbus_tcp_worker::modbus_tcp_worker(const QStringList& thread_params, GatewayMode mode, QObject *parent)
+    : worker{thread_params, parent},
+      _mode(mode)
 {
     if(!start_worker_thread("slot_start_worker")){
         if(_last_error.isEmpty()){
@@ -281,27 +434,44 @@ bool modbus_tcp_worker::slot_start_worker()
         return false;
     }
 
+    QHostAddress ip(_thread_params[idx_ip]);
+    if(ip.isNull()){
+        _last_error = QString("Invalid Modbus TCP address: %1").arg(_thread_params[idx_ip]);
+        return false;
+    }
+    bool port_ok = false;
+    quint16 port = _thread_params[idx_port].toUShort(&port_ok);
+    if(!port_ok || port == 0){
+        _last_error = QString("Invalid Modbus TCP port: %1").arg(_thread_params[idx_port]);
+        return false;
+    }
+
+    if(_mode == GatewayMode::RtuToTcp){
+        _modbus_tcp_client = new modbus_tcp_client(this);
+        connect(_modbus_tcp_client, &modbus_tcp_client::sig_rcv, this, &modbus_tcp_worker::slot_rcv, Qt::DirectConnection);
+        connect(_modbus_tcp_client, &modbus_tcp_client::sig_update_tcp_wdgt, this, &modbus_tcp_worker::slot_update_tcp_wdgt, Qt::DirectConnection);
+        connect(_modbus_tcp_client, &modbus_tcp_client::sig_client_connected_notify, this, &modbus_tcp_worker::slot_client_connected_notify, Qt::DirectConnection);
+        connect(_modbus_tcp_client, &modbus_tcp_client::sig_client_disconnected_notify, this, &modbus_tcp_worker::slot_client_disconnected_notify, Qt::DirectConnection);
+        connect(this, &modbus_tcp_worker::sig_send, _modbus_tcp_client, &modbus_tcp_client::slot_send, Qt::DirectConnection);
+        if(!_modbus_tcp_client->connect_to_host(ip, port, 3000)){
+            _last_error = _modbus_tcp_client->error_string();
+            if(_last_error.isEmpty()){
+                _last_error = "Failed to connect Modbus TCP slave.";
+            }
+            delete _modbus_tcp_client;
+            _modbus_tcp_client = nullptr;
+            return false;
+        }
+        _running = true;
+        return true;
+    }
+
     _modbus_tcp_server = new modbus_tcp_server(this);
     connect(_modbus_tcp_server, &modbus_tcp_server::sig_rcv, this, &modbus_tcp_worker::slot_rcv, Qt::DirectConnection);
     connect(_modbus_tcp_server, &modbus_tcp_server::sig_update_tcp_wdgt, this, &modbus_tcp_worker::slot_update_tcp_wdgt, Qt::DirectConnection);
     connect(_modbus_tcp_server, &modbus_tcp_server::sig_client_connected_notify, this, &modbus_tcp_worker::slot_client_connected_notify, Qt::DirectConnection);
     connect(_modbus_tcp_server, &modbus_tcp_server::sig_client_disconnected_notify, this, &modbus_tcp_worker::slot_client_disconnected_notify, Qt::DirectConnection);
     connect(this, &modbus_tcp_worker::sig_send, _modbus_tcp_server, &modbus_tcp_server::slot_send, Qt::DirectConnection);
-    QHostAddress ip(_thread_params[idx_ip]);
-    if(ip.isNull()){
-        _last_error = QString("Invalid Modbus TCP listen address: %1").arg(_thread_params[idx_ip]);
-        delete _modbus_tcp_server;
-        _modbus_tcp_server = nullptr;
-        return false;
-    }
-    bool port_ok = false;
-    quint16 port = _thread_params[idx_port].toUShort(&port_ok);
-    if(!port_ok || port == 0){
-        _last_error = QString("Invalid Modbus TCP listen port: %1").arg(_thread_params[idx_port]);
-        delete _modbus_tcp_server;
-        _modbus_tcp_server = nullptr;
-        return false;
-    }
     if (!_modbus_tcp_server->listen(ip, port))
     {
         _last_error = _modbus_tcp_server->errorString();
@@ -324,6 +494,11 @@ void modbus_tcp_worker::slot_quit_worker()
         delete _modbus_tcp_server;
         _modbus_tcp_server = nullptr;
     }
+    if(_modbus_tcp_client){
+        _modbus_tcp_client->slot_disconnect();
+        delete _modbus_tcp_client;
+        _modbus_tcp_client = nullptr;
+    }
     _running = false;
 }
 
@@ -336,7 +511,7 @@ void modbus_tcp_worker::slot_set_accepting_clients(bool accepting)
 
 void modbus_tcp_worker::slot_rtu_to_tcp(const QByteArray& frame, quint64 tcp_session_id)
 {
-    if(_modbus_tcp_server){
+    if(_modbus_tcp_server || _modbus_tcp_client){
         emit sig_send(frame, tcp_session_id);
     }
 }
@@ -344,7 +519,7 @@ void modbus_tcp_worker::slot_rtu_to_tcp(const QByteArray& frame, quint64 tcp_ses
 void modbus_tcp_worker::slot_rcv(const QString& client_ip, const QString& client_port, const QByteArray& frame, quint64 tcp_session_id)
 {
     emit sig_rcv(frame, tcp_session_id);
-    emit sig_update_tcp_wdgt(QString("%1:%2").arg(client_ip, client_port), "<-", frame);
+    emit sig_update_tcp_wdgt(QString("%1:%2").arg(client_ip, client_port), "->", frame);
 }
 
 void modbus_tcp_worker::slot_update_tcp_wdgt(const QString& client, const QString& dir, const QByteArray& frame)
@@ -354,12 +529,16 @@ void modbus_tcp_worker::slot_update_tcp_wdgt(const QString& client, const QStrin
 
 void modbus_tcp_worker::slot_client_connected_notify(const QString& ip, const QString& port)
 {
-    emit sig_update_client_status(QString("%1:%2 connected").arg(ip, port));
+    emit sig_update_client_status(_mode == GatewayMode::RtuToTcp
+                                      ? QString("Modbus TCP slave %1:%2 connected").arg(ip, port)
+                                      : QString("%1:%2 connected").arg(ip, port));
 }
 
 void modbus_tcp_worker::slot_client_disconnected_notify(const QString& ip, const QString& port, quint64 tcp_session_id)
 {
-    emit sig_update_client_status(QString("%1:%2 disconnected").arg(ip, port));
+    emit sig_update_client_status(_mode == GatewayMode::RtuToTcp
+                                      ? QString("Modbus TCP slave %1:%2 disconnected").arg(ip, port)
+                                      : QString("%1:%2 disconnected").arg(ip, port));
     emit sig_client_disconnected(tcp_session_id);
 }
 

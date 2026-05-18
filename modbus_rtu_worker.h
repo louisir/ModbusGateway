@@ -1,6 +1,7 @@
 #ifndef MODBUS_RTU_WORKER_H
 #define MODBUS_RTU_WORKER_H
 
+#include "gateway_mode.h"
 #include "worker.h"
 
 #include <QObject>
@@ -10,7 +11,7 @@ class modbus_rtu_worker : public worker
 {
     Q_OBJECT
 public:
-    explicit modbus_rtu_worker(const QStringList& thread_params, QObject *parent = nullptr);
+    explicit modbus_rtu_worker(const QStringList& thread_params, GatewayMode mode, QObject *parent = nullptr);
     ~modbus_rtu_worker();
     void stop();
     bool is_running() const;
@@ -86,6 +87,7 @@ private:
     const int _late_response_guard_ms = 500;
     const int _timeout_quarantine_ms = 4000;
     const int _serial_write_timeout_ms = 500;
+    const quint64 _reverse_tcp_session_id = 0;
     QSerialPort* _serial = nullptr;
     QTimer* _response_timer = nullptr;
     QTimer* _response_guard_timer = nullptr;
@@ -98,6 +100,8 @@ private:
     bool _waiting_response = false;
     bool _response_guard_active = false;
     bool _running = false;
+    GatewayMode _mode = GatewayMode::TcpToRtu;
+    quint16 _next_transaction_id = 1;
     QString _last_error;
 
 private:
@@ -117,6 +121,7 @@ private:
     quint16 calc_modbus_rtu_crc(const QByteArray &data);
     QByteArray append_crc(const QByteArray& adu);
     int expected_rtu_frame_length(const QByteArray& data, int offset);
+    int expected_rtu_request_frame_length(const QByteArray& data, int offset);
     bool is_response_for_pending_request(const QByteArray& rtu_frame);
     bool is_normal_response_for_pending_request(const QByteArray& response_adu);
     bool validate_request_adu(const QByteArray& adu, quint8& exception_code);
@@ -130,10 +135,14 @@ private:
     void prune_response_quarantine();
     bool is_request_quarantined(const QByteArray& request_adu);
     void handle_rtu_frame(const QByteArray& rtu_frame);
+    void handle_rtu_request_frame(const QByteArray& rtu_frame);
+    void handle_tcp_response_adu(const QByteArray& adu, const QByteArray& transaction_id, quint64 tcp_session_id);
     void send_next_request();
     void finish_pending_request();
     void start_late_response_guard();
     void emit_gateway_exception_response(const QByteArray& request_adu, const QByteArray& transaction_id, quint64 tcp_session_id, quint8 exception_code);
+    void emit_rtu_exception_response(const QByteArray& request_adu, quint8 exception_code);
+    QByteArray next_transaction_id();
 
 };
 

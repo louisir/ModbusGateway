@@ -21,6 +21,7 @@ SOURCES += \
     worker.cpp
 
 HEADERS += \
+    gateway_mode.h \
     mainwindow.h \
     modbus_rtu_worker.h \
     modbus_tcp_worker.h \

@@ -3,6 +3,8 @@
 
 #include <QWidget>
 
+#include "gateway_mode.h"
+
 namespace Ui {
 class ModbusTcpWidget;
 }
@@ -16,6 +18,7 @@ public:
     ~ModbusTcpWidget();
 
     QStringList get_params() const;
+    void set_gateway_mode(GatewayMode mode);
 
 private:
     Ui::ModbusTcpWidget *ui;    

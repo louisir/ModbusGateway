@@ -19,7 +19,8 @@ MainWindow::MainWindow(QWidget *parent)
     label_status = new QLabel("No Modbus-TCP master", this);
     ui->statusbar->addWidget(label_status);
 
-    this->setWindowTitle(QString("Modbus-TCP to Modbus-RTU soft gateway - by louis / louis.androidor@gmail.com"));
+    update_gateway_mode_ui();
+    label_status->setText(idle_status_text());
 }
 
 MainWindow::~MainWindow()
@@ -35,7 +36,7 @@ void MainWindow::on_btn_run_clicked()
         stop_workers();
         set_config_widgets_enabled(true);
         ui->btn_run->setText("运行");
-        label_status->setText("No Modbus-TCP master");
+        label_status->setText(idle_status_text());
         return;
     }
 
@@ -43,7 +44,7 @@ void MainWindow::on_btn_run_clicked()
         stop_workers();
         set_config_widgets_enabled(true);
         ui->btn_run->setText("运行");
-        label_status->setText("No Modbus-TCP master");
+        label_status->setText(idle_status_text());
         return;
     }
 
@@ -55,6 +56,15 @@ void MainWindow::on_btn_run_clicked()
         set_config_widgets_enabled(true);
         ui->btn_run->setText("运行");
     }
+}
+
+void MainWindow::on_comboBox_direction_currentIndexChanged(int)
+{
+    if(rtu_worker || tcp_worker){
+        return;
+    }
+    update_gateway_mode_ui();
+    label_status->setText(idle_status_text());
 }
 
 void MainWindow::slot_update_rtu_wdgt(const QString& dir, const QByteArray& frame)
@@ -88,6 +98,7 @@ void MainWindow::set_config_widgets_enabled(bool enabled)
 {
     mbrtu_wdgt->setEnabled(enabled);
     mbtcp_wdgt->setEnabled(enabled);
+    ui->comboBox_direction->setEnabled(enabled);
 }
 
 void MainWindow::stop_workers()
@@ -113,7 +124,9 @@ bool MainWindow::start_workers()
         stop_workers();
     }
 
-    rtu_worker = new modbus_rtu_worker(mbrtu_wdgt->get_params());
+    const GatewayMode mode = current_gateway_mode();
+
+    rtu_worker = new modbus_rtu_worker(mbrtu_wdgt->get_params(), mode);
     if(!rtu_worker->is_running()){
         const QString error = rtu_worker->last_error().isEmpty() ? "Failed to start Modbus RTU worker." : rtu_worker->last_error();
         label_status->setText(error);
@@ -121,9 +134,9 @@ bool MainWindow::start_workers()
         return false;
     }
 
-    tcp_worker = new modbus_tcp_worker(mbtcp_wdgt->get_params());
+    tcp_worker = new modbus_tcp_worker(mbtcp_wdgt->get_params(), mode);
     if(!tcp_worker->is_running()){
-        const QString error = tcp_worker->last_error().isEmpty() ? "Failed to start Modbus TCP server." : tcp_worker->last_error();
+        const QString error = tcp_worker->last_error().isEmpty() ? "Failed to start Modbus TCP worker." : tcp_worker->last_error();
         label_status->setText(error);
         stop_workers();
         return false;
@@ -142,13 +155,34 @@ bool MainWindow::start_workers()
     connect(tcp_worker, &modbus_tcp_worker::sig_client_disconnected, rtu_worker, &modbus_rtu_worker::slot_clear_pending_requests_for_session, Qt::BlockingQueuedConnection);
     connect(_transfer, &transfer::sig_rtu_to_tcp, tcp_worker, &modbus_tcp_worker::slot_rtu_to_tcp, Qt::QueuedConnection);
 
-    const bool accepting_enabled = QMetaObject::invokeMethod(tcp_worker, "slot_set_accepting_clients", Qt::BlockingQueuedConnection, Q_ARG(bool, true));
-    if(!accepting_enabled){
-        label_status->setText("Failed to enable Modbus TCP client acceptance.");
-        stop_workers();
-        return false;
+    if(mode == GatewayMode::TcpToRtu){
+        const bool accepting_enabled = QMetaObject::invokeMethod(tcp_worker, "slot_set_accepting_clients", Qt::BlockingQueuedConnection, Q_ARG(bool, true));
+        if(!accepting_enabled){
+            label_status->setText("Failed to enable Modbus TCP client acceptance.");
+            stop_workers();
+            return false;
+        }
     }
 
-    label_status->setText("No Modbus-TCP master");
+    label_status->setText(mode == GatewayMode::TcpToRtu ? "No Modbus-TCP master" : "Connected to Modbus-TCP slave");
     return true;
+}
+
+GatewayMode MainWindow::current_gateway_mode() const
+{
+    return ui->comboBox_direction->currentIndex() == 1 ? GatewayMode::RtuToTcp : GatewayMode::TcpToRtu;
+}
+
+QString MainWindow::idle_status_text() const
+{
+    return current_gateway_mode() == GatewayMode::TcpToRtu ? "No Modbus-TCP master" : "Ready to connect Modbus-TCP slave";
+}
+
+void MainWindow::update_gateway_mode_ui()
+{
+    const GatewayMode mode = current_gateway_mode();
+    mbtcp_wdgt->set_gateway_mode(mode);
+    this->setWindowTitle(mode == GatewayMode::TcpToRtu
+                             ? QString("Modbus TCP master to RTU slave gateway - by louis / louis.androidor@gmail.com")
+                             : QString("Modbus RTU master to TCP slave gateway - by louis / louis.androidor@gmail.com"));
 }

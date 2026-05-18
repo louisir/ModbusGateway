@@ -2,7 +2,7 @@
 
 中文 | [English](#modbusgateway-english)
 
-ModbusGateway 是一个基于 Qt 的 Modbus 软网关工具，用于在 Modbus TCP 主站和 Modbus RTU 从站设备之间转发请求与响应。程序提供图形界面，可配置串口参数、TCP 监听地址和端口，并显示 TCP/RTU 两侧的实时收发帧。
+ModbusGateway 是一个基于 Qt 的 Modbus 软网关工具，用于在 Modbus TCP 与 Modbus RTU 之间转发请求与响应。程序支持 `RTU <- TCP` 和 `RTU -> TCP` 两种方向，可配置串口参数、TCP 监听或目标地址，并显示 TCP/RTU 两侧的实时收发帧。
 
 ## 最新版本下载
 
@@ -13,7 +13,8 @@ ModbusGateway 是一个基于 Qt 的 Modbus 软网关工具，用于在 Modbus T
 
 ## 功能特性
 
-- Modbus TCP 到 Modbus RTU 双向转换。
+- 支持 `RTU <- TCP`：Modbus TCP 主站访问 Modbus RTU 从站。
+- 支持 `RTU -> TCP`：Modbus RTU 主站访问 Modbus TCP 从站。
 - TCP 侧按 MBAP 长度字段解析帧，支持 TCP 半包和粘包。
 - RTU 侧自动追加/校验 CRC16。
 - RTU 请求按队列串行发送，避免多个 TCP 请求并发打到同一条 RTU 总线。
@@ -27,13 +28,15 @@ ModbusGateway 是一个基于 Qt 的 Modbus 软网关工具，用于在 Modbus T
   - `0x0F` 写多个线圈
   - `0x10` 写多个保持寄存器
 - 支持 Modbus 异常响应帧。
-- RTU 响应超时时向 TCP 主站返回网关异常响应。
+- RTU 或 TCP 从站响应超时时返回网关异常响应。
 - GUI 实时显示 TCP 与 RTU 两侧的收发方向、时间戳和十六进制数据。
 
 ## 当前约束
 
-- 当前 TCP server 一次只接受一个 TCP client 连接；新的连接会被拒绝。
-- RTU 响应超时时间当前固定为 2000 ms。
+- `RTU <- TCP` 模式下，TCP server 一次只接受一个 TCP client 连接；新的连接会被拒绝。
+- `RTU -> TCP` 模式下，程序作为 TCP client 连接一个 TCP 从站，同一时间只处理一个 RTU 主站请求。
+- RTU/TCP 响应超时时间当前固定为 2000 ms。
+- `RTU -> TCP` 模式不转发 RTU 广播地址 `0`。
 - 工程是 Qt Widgets 应用，使用 qmake 构建。
 - 未内置自动化协议测试或串口模拟器。
 
@@ -95,30 +98,32 @@ dist/ModbusGateway-v0.6-win64.zip
 ## 使用方法
 
 1. 启动程序。
-2. 在 RTU 配置区选择串口号、波特率、数据位、停止位、校验位和流控制。
-3. 在 TCP 配置区选择本机监听 IP 和端口，默认端口为 `502`。
-4. 点击“运行”启动网关。
-5. 将 Modbus TCP 主站连接到程序监听的 IP 和端口。
-6. 程序会把 TCP 请求转换为 RTU 帧发往串口，并把 RTU 响应转换回 TCP 响应。
-7. 点击“停止”关闭网关。
+2. 在方向下拉框选择 `RTU <- TCP` 或 `RTU -> TCP`。
+3. 在 RTU 配置区选择串口号、波特率、数据位、停止位、校验位和流控制。
+4. 在 TCP 配置区填写 IP 和端口。`RTU <- TCP` 模式表示本机监听地址；`RTU -> TCP` 模式表示目标 TCP 从站地址。默认端口为 `502`。
+5. 点击“运行”启动网关。
+6. `RTU <- TCP` 模式下，将 Modbus TCP 主站连接到程序监听的 IP 和端口。
+7. `RTU -> TCP` 模式下，将 Modbus RTU 主站连接到所选串口，程序会主动连接配置的 Modbus TCP 从站。
+8. 点击“停止”关闭网关。
 
 界面上方列表显示 RTU 侧数据，下方列表显示 TCP 侧数据。`<-` 表示发出，`->` 表示收到。
 
 ## 协议转换说明
 
-TCP 到 RTU：
+`RTU <- TCP`：
 
 - 解析 Modbus TCP MBAP 头。
 - 保留 Unit Identifier、Function Code 和 PDU 数据作为 RTU ADU。
 - 自动计算并追加 Modbus RTU CRC16。
 - 请求进入 RTU 队列，等待前一个请求响应或超时后再发送下一个请求。
+- RTU 响应校验地址、功能码和 CRC16 后，去掉 CRC 并使用对应 TCP 请求的 Transaction Identifier 返回给 TCP 主站。
 
-RTU 到 TCP：
+`RTU -> TCP`：
 
-- 校验 RTU 地址、功能码和 CRC16。
-- 去掉 RTU CRC。
-- 生成 MBAP 头。
-- 使用对应 TCP 请求的 Transaction Identifier 返回给主站。
+- 校验来自串口的 RTU 请求地址、功能码和 CRC16。
+- 去掉 RTU CRC，生成 MBAP 头和 Transaction Identifier，发送给配置的 TCP 从站。
+- TCP 响应必须匹配当前 Transaction Identifier 和 RTU 请求内容。
+- TCP 响应转换为 RTU 响应时自动追加 CRC16，并写回串口。
 
 ## 目录结构
 
@@ -139,7 +144,7 @@ RTU 到 TCP：
 
 关键文件：
 
-- `modbus_tcp_worker.*`: TCP server、TCP 帧接收、事务 ID 匹配和 TCP 响应发送。
+- `modbus_tcp_worker.*`: TCP server/client、TCP 帧接收、事务 ID 匹配和 TCP 收发。
 - `modbus_rtu_worker.*`: 串口收发、RTU CRC、RTU 帧解析、请求队列和超时处理。
 - `transfer.*`: Modbus TCP 和 Modbus RTU ADU 的转换。
 - `mainwindow.*`: 主界面、启动停止逻辑和日志显示。
@@ -148,7 +153,7 @@ RTU 到 TCP：
 
 ### 程序启动失败
 
-检查串口是否被其他程序占用，或 TCP 端口是否已经被占用。Windows 下监听 `502` 端口可能需要管理员权限。
+检查串口是否被其他程序占用。`RTU <- TCP` 模式还需要检查 TCP 端口是否已被占用；Windows 下监听 `502` 端口可能需要管理员权限。`RTU -> TCP` 模式需要确认目标 TCP 从站可以连接。
 
 ### TCP 主站连接不上
 
@@ -157,6 +162,10 @@ RTU 到 TCP：
 ### RTU 设备无响应
 
 检查串口号、波特率、数据位、停止位、校验位、485 转换器接线以及从站地址。也可以通过界面的 RTU 收发日志确认请求是否已经发出。
+
+### TCP 从站连接失败
+
+在 `RTU -> TCP` 模式下，确认 TCP 配置区填写的是目标 TCP 从站 IP 和端口，并检查网络、防火墙和从站服务状态。
 
 ### 多个 TCP 主站同时连接
 
@@ -172,7 +181,7 @@ This project is licensed under the terms of the [LICENSE](LICENSE) file.
 
 [中文](#modbusgateway) | English
 
-ModbusGateway is a Qt-based Modbus software gateway. It forwards requests and responses between a Modbus TCP master and Modbus RTU slave devices. The application provides a GUI for serial port settings, TCP listening settings, and real-time TCP/RTU frame logs.
+ModbusGateway is a Qt-based Modbus software gateway for forwarding requests and responses between Modbus TCP and Modbus RTU. It supports both `RTU <- TCP` and `RTU -> TCP` directions, with GUI settings for the serial port, TCP listen or target address, and real-time TCP/RTU frame logs.
 
 ## Latest Release Download
 
@@ -183,7 +192,8 @@ ModbusGateway is a Qt-based Modbus software gateway. It forwards requests and re
 
 ## Features
 
-- Bidirectional Modbus TCP to Modbus RTU conversion.
+- `RTU <- TCP`: a Modbus TCP master accesses Modbus RTU slave devices.
+- `RTU -> TCP`: a Modbus RTU master accesses a Modbus TCP slave device.
 - TCP frame parsing based on the MBAP length field, including TCP packet fragmentation and coalescing.
 - Automatic Modbus RTU CRC16 append and validation.
 - Serialized RTU request queue to prevent multiple TCP requests from being sent to the same RTU bus at the same time.
@@ -197,13 +207,15 @@ ModbusGateway is a Qt-based Modbus software gateway. It forwards requests and re
   - `0x0F` Write Multiple Coils
   - `0x10` Write Multiple Registers
 - Modbus exception response support.
-- Gateway exception response on RTU response timeout.
+- Gateway exception response on RTU or TCP slave response timeout.
 - GUI logs for TCP and RTU frame direction, timestamp, and hexadecimal payload.
 
 ## Current Limitations
 
-- The TCP server accepts only one TCP client at a time. Additional connections are rejected.
-- The RTU response timeout is currently fixed at 2000 ms.
+- In `RTU <- TCP` mode, the TCP server accepts only one TCP client at a time. Additional connections are rejected.
+- In `RTU -> TCP` mode, the application acts as a TCP client connected to one TCP slave and handles one outstanding RTU master request at a time.
+- The RTU/TCP response timeout is currently fixed at 2000 ms.
+- `RTU -> TCP` mode does not forward RTU broadcast address `0`.
 - The project is a Qt Widgets application built with qmake.
 - No built-in automated protocol test suite or serial port simulator is included.
 
@@ -265,30 +277,32 @@ When publishing a new version, also update the version number, download links, a
 ## Usage
 
 1. Start the application.
-2. Select the serial port, baud rate, data bits, stop bits, parity, and flow control in the RTU panel.
-3. Select the local TCP listen IP and port in the TCP panel. The default port is `502`.
-4. Click `运行` to start the gateway.
-5. Connect your Modbus TCP master to the selected IP and port.
-6. The application converts TCP requests to RTU frames and converts RTU responses back to TCP responses.
-7. Click `停止` to stop the gateway.
+2. Select `RTU <- TCP` or `RTU -> TCP` from the direction drop-down.
+3. Select the serial port, baud rate, data bits, stop bits, parity, and flow control in the RTU panel.
+4. Enter the TCP IP and port in the TCP panel. In `RTU <- TCP` mode this is the local listen address; in `RTU -> TCP` mode this is the target TCP slave address. The default port is `502`.
+5. Click `运行` to start the gateway.
+6. In `RTU <- TCP` mode, connect your Modbus TCP master to the selected listen IP and port.
+7. In `RTU -> TCP` mode, connect your Modbus RTU master to the selected serial port. The application connects to the configured Modbus TCP slave.
+8. Click `停止` to stop the gateway.
 
 The upper list shows RTU traffic, and the lower list shows TCP traffic. `<-` means sent, and `->` means received.
 
 ## Conversion Behavior
 
-TCP to RTU:
+`RTU <- TCP`:
 
 - Parse the Modbus TCP MBAP header.
 - Keep Unit Identifier, Function Code, and PDU data as the RTU ADU.
 - Calculate and append the Modbus RTU CRC16.
 - Queue RTU requests and send the next request only after the previous response or timeout.
+- Validate the RTU response address, function code, and CRC16, remove the CRC, and return it to the TCP master with the matching Transaction Identifier.
 
-RTU to TCP:
+`RTU -> TCP`:
 
-- Validate RTU address, function code, and CRC16.
-- Remove the RTU CRC.
-- Generate a new MBAP header.
-- Return the response with the matching TCP Transaction Identifier.
+- Validate the RTU request address, function code, and CRC16 from the serial side.
+- Remove the RTU CRC, generate an MBAP header and Transaction Identifier, and send the request to the configured TCP slave.
+- The TCP response must match the current Transaction Identifier and RTU request.
+- The TCP response is converted back to RTU with CRC16 and written to the serial port.
 
 ## Project Layout
 
@@ -309,7 +323,7 @@ RTU to TCP:
 
 Important files:
 
-- `modbus_tcp_worker.*`: TCP server, TCP frame reception, transaction ID matching, and TCP response sending.
+- `modbus_tcp_worker.*`: TCP server/client, TCP frame reception, transaction ID matching, and TCP I/O.
 - `modbus_rtu_worker.*`: Serial I/O, RTU CRC, RTU frame parsing, request queue, and timeout handling.
 - `transfer.*`: Conversion between Modbus TCP and Modbus RTU ADUs.
 - `mainwindow.*`: Main window, start/stop control, and traffic logs.
@@ -318,7 +332,7 @@ Important files:
 
 ### Startup fails
 
-Check whether the serial port is already used by another program or whether the TCP port is already occupied. On Windows, listening on port `502` may require administrator privileges.
+Check whether the serial port is already used by another program. In `RTU <- TCP` mode, also check whether the TCP port is already occupied; on Windows, listening on port `502` may require administrator privileges. In `RTU -> TCP` mode, confirm that the target TCP slave is reachable.
 
 ### TCP master cannot connect
 
@@ -327,6 +341,10 @@ Make sure the selected local IP address is correct and that your firewall allows
 ### RTU device does not respond
 
 Check the serial port, baud rate, data bits, stop bits, parity, RS-485 adapter wiring, and slave address. The RTU log in the GUI can help confirm whether requests are being sent.
+
+### TCP slave connection fails
+
+In `RTU -> TCP` mode, make sure the TCP panel contains the target TCP slave IP and port, and check the network, firewall, and slave service status.
 
 ### Multiple TCP masters
 

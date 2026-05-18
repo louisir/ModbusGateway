@@ -1,9 +1,11 @@
 #ifndef MODBUS_TCP_WORKER_H
 #define MODBUS_TCP_WORKER_H
 
+#include "gateway_mode.h"
 #include "worker.h"
 
 #include <QObject>
+#include <QHostAddress>
 #include <QTcpServer>
 #include <QTcpSocket>
 
@@ -47,11 +49,48 @@ private:
     bool send_gateway_exception(QTcpSocket* client, const QByteArray& request_frame, quint8 exception_code);
 };
 
+class modbus_tcp_client : public QObject
+{
+    Q_OBJECT
+public:
+    explicit modbus_tcp_client(QObject* parent = nullptr);
+    ~modbus_tcp_client();
+
+    bool connect_to_host(const QHostAddress& address, quint16 port, int timeout_ms);
+    QString error_string() const;
+
+signals:
+    void sig_rcv(const QString& client_ip, const QString& client_port, const QByteArray& frame, quint64 tcp_session_id);
+    void sig_update_tcp_wdgt(const QString& client, const QString& dir, const QByteArray& frame);
+    void sig_client_connected_notify(const QString& ip, const QString& port);
+    void sig_client_disconnected_notify(const QString& ip, const QString& port, quint64 tcp_session_id);
+
+public slots:
+    void slot_send(const QByteArray& frame, quint64 tcp_session_id);
+    void slot_disconnect();
+
+private slots:
+    void slot_read_ready();
+    void slot_disconnected();
+
+private:
+    const quint8 _min_tcp_frame_length = 8;
+    const quint32 _max_buff_size = 4096;
+    QTcpSocket* _socket = nullptr;
+    QByteArray _rx_buffer;
+    quint64 _session_id = 1;
+    QString _host;
+    QString _port;
+    QString _last_error;
+
+    bool queue_request(const QByteArray& request);
+};
+
 class modbus_tcp_worker : public worker
 {
     Q_OBJECT
 public:
-    explicit modbus_tcp_worker(const QStringList& thread_params, QObject *parent = nullptr);
+    explicit modbus_tcp_worker(const QStringList& thread_params, GatewayMode mode, QObject *parent = nullptr);
     ~modbus_tcp_worker();
     void stop();
     bool is_running() const;
@@ -81,7 +120,9 @@ private:
         idx_port,        
     };
 private:    
-    modbus_tcp_server* _modbus_tcp_server = nullptr;    
+    modbus_tcp_server* _modbus_tcp_server = nullptr;
+    modbus_tcp_client* _modbus_tcp_client = nullptr;
+    GatewayMode _mode = GatewayMode::TcpToRtu;
     bool _running = false;
     QString _last_error;
 };

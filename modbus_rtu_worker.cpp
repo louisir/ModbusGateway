@@ -1,7 +1,8 @@
 #include "modbus_rtu_worker.h"
 
-modbus_rtu_worker::modbus_rtu_worker(const QStringList& thread_params, QObject *parent)
-    : worker{thread_params, parent}
+modbus_rtu_worker::modbus_rtu_worker(const QStringList& thread_params, GatewayMode mode, QObject *parent)
+    : worker{thread_params, parent},
+      _mode(mode)
 {
     if(!start_worker_thread("slot_start_worker")){
         if(_last_error.isEmpty()){
@@ -152,6 +153,11 @@ void modbus_rtu_worker::slot_quit_worker()
 
 void modbus_rtu_worker::slot_tcp_to_rtu(const QByteArray& adu, const QByteArray& transaction_id, quint64 tcp_session_id)
 {
+    if(_mode == GatewayMode::RtuToTcp){
+        handle_tcp_response_adu(adu, transaction_id, tcp_session_id);
+        return;
+    }
+
     if(tcp_session_id == 0 || tcp_session_id <= _last_disconnected_tcp_session_id){
         emit sig_discard_tcp_transaction(tcp_session_id);
         return;
@@ -192,6 +198,22 @@ void modbus_rtu_worker::slot_tcp_to_rtu(const QByteArray& adu, const QByteArray&
 
 void modbus_rtu_worker::slot_clear_pending_requests()
 {
+    if(_mode == GatewayMode::RtuToTcp){
+        _tx_queue.clear();
+        _pending_adu.clear();
+        _pending_transaction_id.clear();
+        _pending_tcp_session_id = 0;
+        _waiting_response = false;
+        _cache.clear();
+        if(_response_timer){
+            _response_timer->stop();
+        }
+        if(_serial){
+            _serial->clear(QSerialPort::AllDirections);
+        }
+        return;
+    }
+
     const bool abandoned_pending_request = _waiting_response && !_pending_adu.isEmpty();
     if(abandoned_pending_request){
         qWarning() << "Abandoning pending Modbus RTU request:" << _pending_adu.toHex();
@@ -218,6 +240,17 @@ void modbus_rtu_worker::slot_clear_pending_requests()
 
 void modbus_rtu_worker::slot_clear_pending_requests_for_session(quint64 tcp_session_id)
 {
+    if(_mode == GatewayMode::RtuToTcp){
+        if(_waiting_response &&
+            !_pending_adu.isEmpty() &&
+            _pending_tcp_session_id == tcp_session_id){
+            qWarning() << "Modbus TCP slave disconnected while an RTU request is pending:" << _pending_adu.toHex();
+            emit_rtu_exception_response(_pending_adu, 0x0A);
+            finish_pending_request();
+        }
+        return;
+    }
+
     if(tcp_session_id > _last_disconnected_tcp_session_id){
         _last_disconnected_tcp_session_id = tcp_session_id;
     }
@@ -266,6 +299,13 @@ void modbus_rtu_worker::slot_response_timeout()
     }
 
     const QByteArray request_adu = _pending_adu;
+    if(_mode == GatewayMode::RtuToTcp){
+        qWarning() << "Modbus TCP slave response timeout.";
+        emit_rtu_exception_response(request_adu, 0x0B);
+        finish_pending_request();
+        return;
+    }
+
     const QByteArray transaction_id = _pending_transaction_id;
     const quint64 tcp_session_id = _pending_tcp_session_id;
     qWarning() << "Modbus RTU response timeout.";
@@ -281,6 +321,9 @@ void modbus_rtu_worker::slot_response_guard_finished()
     _cache.clear();
     if(_serial){
         _serial->clear(QSerialPort::Input);
+    }
+    if(_mode == GatewayMode::RtuToTcp){
+        return;
     }
     send_next_request();
 }
@@ -473,6 +516,10 @@ QByteArray modbus_rtu_worker::append_crc(const QByteArray& adu)
 
 int modbus_rtu_worker::expected_rtu_frame_length(const QByteArray& data, int offset)
 {
+    if(_mode == GatewayMode::RtuToTcp){
+        return expected_rtu_request_frame_length(data, offset);
+    }
+
     if(data.length() - offset < 2){
         return 0;
     }
@@ -500,6 +547,36 @@ int modbus_rtu_worker::expected_rtu_frame_length(const QByteArray& data, int off
     case fc_w_multiple_coils:
     case fc_w_multiple_holding:
         return 8;
+    default:
+        return -1;
+    }
+}
+
+int modbus_rtu_worker::expected_rtu_request_frame_length(const QByteArray& data, int offset)
+{
+    if(data.length() - offset < 2){
+        return 0;
+    }
+
+    const quint8 fc = static_cast<quint8>(data.at(offset + idx_func));
+    if(!is_valid_func_code(fc) || (fc & 0x80)){
+        return -1;
+    }
+
+    switch(fc){
+    case fc_r_coil:
+    case fc_r_discrete:
+    case fc_r_holding:
+    case fc_r_input:
+    case fc_w_single_coil:
+    case fc_w_single_holding:
+        return 8;
+    case fc_w_multiple_coils:
+    case fc_w_multiple_holding:
+        if(data.length() - offset < 7){
+            return 0;
+        }
+        return 9 + static_cast<quint8>(data.at(offset + 6));
     default:
         return -1;
     }
@@ -812,6 +889,11 @@ bool modbus_rtu_worker::is_request_quarantined(const QByteArray& request_adu)
 
 void modbus_rtu_worker::handle_rtu_frame(const QByteArray& rtu_frame)
 {
+    if(_mode == GatewayMode::RtuToTcp){
+        handle_rtu_request_frame(rtu_frame);
+        return;
+    }
+
     if(!is_response_for_pending_request(rtu_frame)){
         qWarning() << "Ignoring unexpected Modbus RTU frame:" << rtu_frame.toHex();
         return;
@@ -825,6 +907,63 @@ void modbus_rtu_worker::handle_rtu_frame(const QByteArray& rtu_frame)
     emit sig_update_rtu_wdgt("->", rtu_frame);
     finish_pending_request();
     send_next_request();
+}
+
+void modbus_rtu_worker::handle_rtu_request_frame(const QByteArray& rtu_frame)
+{
+    emit sig_update_rtu_wdgt("->", rtu_frame);
+
+    if(_waiting_response){
+        qWarning() << "Rejecting concurrent Modbus RTU request while a TCP response is pending:" << rtu_frame.toHex();
+        emit_rtu_exception_response(rtu_frame.left(rtu_frame.length() - 2), 0x06);
+        return;
+    }
+
+    const QByteArray request_adu = rtu_frame.left(rtu_frame.length() - 2);
+    quint8 exception_code = 0;
+    if(!validate_request_adu(request_adu, exception_code)){
+        qWarning() << "Invalid Modbus RTU request from serial side:" << request_adu.toHex();
+        emit_rtu_exception_response(request_adu, exception_code);
+        return;
+    }
+
+    _pending_adu = request_adu;
+    _pending_transaction_id = next_transaction_id();
+    _pending_tcp_session_id = _reverse_tcp_session_id;
+    _waiting_response = true;
+    if(_response_timer){
+        _response_timer->start(_response_timeout_ms);
+    }
+
+    emit sig_rcv(rtu_frame, _pending_transaction_id, _pending_tcp_session_id);
+}
+
+void modbus_rtu_worker::handle_tcp_response_adu(const QByteArray& adu, const QByteArray& transaction_id, quint64 tcp_session_id)
+{
+    if(!_waiting_response ||
+        _pending_adu.isEmpty() ||
+        transaction_id != _pending_transaction_id ||
+        tcp_session_id != _pending_tcp_session_id){
+        qWarning() << "Ignoring unexpected Modbus TCP response for RTU side:" << adu.toHex();
+        return;
+    }
+
+    const QByteArray rtu_frame = append_crc(adu);
+    if(!is_response_for_pending_request(rtu_frame)){
+        qWarning() << "Invalid Modbus TCP response for pending RTU request:" << adu.toHex();
+        emit_rtu_exception_response(_pending_adu, 0x0B);
+        finish_pending_request();
+        return;
+    }
+
+    if(!write_full_frame(rtu_frame)){
+        qWarning() << "Failed to write Modbus RTU response frame.";
+        finish_pending_request();
+        return;
+    }
+
+    emit sig_update_rtu_wdgt("<-", rtu_frame);
+    finish_pending_request();
 }
 
 void modbus_rtu_worker::send_next_request()
@@ -930,4 +1069,38 @@ void modbus_rtu_worker::emit_gateway_exception_response(const QByteArray& reques
     exception_adu.append(static_cast<char>(static_cast<quint8>(request_adu.at(idx_func)) | 0x80));
     exception_adu.append(static_cast<char>(exception_code));
     emit sig_rcv(append_crc(exception_adu), transaction_id, tcp_session_id);
+}
+
+void modbus_rtu_worker::emit_rtu_exception_response(const QByteArray& request_adu, quint8 exception_code)
+{
+    if(request_adu.length() < 2 ||
+        static_cast<quint8>(request_adu.at(idx_addr)) == 0 ||
+        exception_code == 0){
+        return;
+    }
+
+    QByteArray exception_adu;
+    exception_adu.append(request_adu.at(idx_addr));
+    exception_adu.append(static_cast<char>(static_cast<quint8>(request_adu.at(idx_func)) | 0x80));
+    exception_adu.append(static_cast<char>(exception_code));
+
+    const QByteArray rtu_frame = append_crc(exception_adu);
+    if(!write_full_frame(rtu_frame)){
+        qWarning() << "Failed to write Modbus RTU exception frame.";
+        return;
+    }
+    emit sig_update_rtu_wdgt("<-", rtu_frame);
+}
+
+QByteArray modbus_rtu_worker::next_transaction_id()
+{
+    const quint16 transaction_id = _next_transaction_id++;
+    if(_next_transaction_id == 0){
+        _next_transaction_id = 1;
+    }
+
+    QByteArray result;
+    result.append(static_cast<char>((transaction_id >> 8) & 0xFF));
+    result.append(static_cast<char>(transaction_id & 0xFF));
+    return result;
 }

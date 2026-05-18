@@ -10,8 +10,10 @@ ModbusTcpWidget::ModbusTcpWidget(QWidget *parent) :
     ui(new Ui::ModbusTcpWidget)
 {
     ui->setupUi(this);
+    ui->comboBox_IPAddr->setEditable(true);
     setIPAddr();
     setPort();
+    set_gateway_mode(GatewayMode::TcpToRtu);
 }
 
 ModbusTcpWidget::~ModbusTcpWidget()
@@ -65,4 +67,16 @@ QStringList ModbusTcpWidget::get_params() const
     params << ui->comboBox_IPAddr->currentText()
            << ui->lineEdit_Port->text();
     return params;
+}
+
+void ModbusTcpWidget::set_gateway_mode(GatewayMode mode)
+{
+    if(mode == GatewayMode::RtuToTcp){
+        ui->label_IPAddr->setText(tr("目标IP："));
+        ui->label_Port->setText(tr("目标端口："));
+        return;
+    }
+
+    ui->label_IPAddr->setText(tr("监听IP："));
+    ui->label_Port->setText(tr("监听端口："));
 }

@@ -56,11 +56,49 @@
      </layout>
     </item>
     <item>
-     <widget class="QPushButton" name="btn_run">
-      <property name="text">
-       <string>运行</string>
-      </property>
-     </widget>
+     <layout class="QHBoxLayout" name="horizontalLayout_direction">
+      <item>
+       <widget class="QLabel" name="label_direction">
+        <property name="text">
+         <string>方向：</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="comboBox_direction">
+        <item>
+         <property name="text">
+          <string>RTU &lt;- TCP</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>RTU -&gt; TCP</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer_direction">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btn_run">
+        <property name="text">
+         <string>运行</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </item>
    </layout>
   </widget>
